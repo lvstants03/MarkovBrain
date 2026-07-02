@@ -56,6 +56,27 @@ Do server lưu dữ liệu trong bộ nhớ tạm thời (RAM), lúc mới khở
 
 ---
 
+---
+
+## 🧠 Chức Năng, Logics & Khả Năng Tính Toán
+
+### 1. Các chức năng chính của mã nguồn hiện tại
+* **WebSocket Scraper**: Lắng nghe và cào dữ liệu xổ số thời gian thực từ trang chủ game chính thức (`vip.ee8833.me` / `ee8822.me`).
+* **HTTP Automated Fetcher**: Tự động gửi các yêu cầu đồng bộ để lấy dữ liệu lịch sử xổ số định kỳ, hỗ trợ cập nhật dữ liệu tự động.
+* **FastAPI Web Server**: Cung cấp tài liệu Swagger UI tự động để dễ dàng thao tác cấu hình Token, nạp lịch sử hoặc xuất kết quả phân tích.
+* **In-Memory Storage (RAM)**: Lưu trữ lịch sử kỳ quay tạm thời trên RAM để tối ưu hóa tốc độ truy xuất và tính toán thời gian thực.
+
+### 2. Logics tính toán
+* **Xác suất phân bổ thực tế**: Phân tích tần suất và tỉ lệ phần trăm xuất hiện thực tế của các cửa Chẵn/Lẻ, Tài/Xỉu trên tổng số kỳ quay đã thu thập.
+* **Thống kê bệt (Streaks Transitions)**: Xác định chuỗi bệt hiện tại đang kéo dài bao nhiêu kỳ. Đồng thời tìm kiếm trong lịch sử các chuỗi bệt có cùng độ dài để thống kê tỉ lệ tiếp tục bệt hoặc gãy chuỗi (chuyển trạng thái).
+* **Xích Markov cấp 1 (Markov Chain)**: Xây dựng ma trận chuyển trạng thái giữa các kỳ quay liền kề trong lịch sử để dự đoán xác suất xuất hiện của cửa tiếp theo.
+
+### 3. Khả năng tính toán (Điều kiện tính toán)
+* **Yêu cầu dữ liệu tối thiểu cho Markov Chain**: Thuật toán dự đoán Xích Markov cấp 1 yêu cầu dữ liệu lịch sử tối thiểu **10 kỳ**. Nếu số kỳ quay trong RAM nhỏ hơn hoặc bằng 10, hệ thống sẽ từ chối giả lập dự đoán và báo kết quả dự báo là `"Không có"`.
+* **Yêu cầu mẫu đối chứng cho bệt (Streaks)**: Để đưa ra dự đoán chuỗi bệt có độ tin cậy cao, hệ thống yêu cầu tối thiểu **3 mẫu lịch sử cùng độ dài bệt** (`MIN_SAMPLES = 3`) và xác suất gãy/tiếp tục bệt phải lớn hơn hoặc bằng **90%** (`CONFIDENCE_THRESHOLD = 0.90`). Nếu không thỏa mãn hai điều kiện này, dự đoán chuỗi bệt sẽ báo kết quả là `"Không có"`.
+
+---
+
 ## 📡 Danh Sách API Endpoints
 
 | Phương thức | Đường dẫn (Endpoint) | Chức năng |
@@ -70,5 +91,5 @@ Do server lưu dữ liệu trong bộ nhớ tạm thời (RAM), lúc mới khở
 
 ## ⚠️ Lưu Ý Quan Trọng
 
-1.  **Token hết hạn:** Nếu token hết hạn, kết nối WebSocket sẽ bị đóng. Server sẽ tự động chạy ở chế độ giả lập (`simulation mode`) sinh dữ liệu test ngẫu nhiên để API không bị lỗi. Hãy lấy token mới dán vào API để tiếp tục cào số thực.
-2.  **Lưu trữ tạm thời:** Dữ liệu được lưu trực tiếp trên RAM để tối ưu tốc độ đọc ghi tính toán nhanh. Khi tắt server, dữ liệu sẽ bị xóa. Bạn chỉ cần thực hiện lại Bước 2 khi khởi chạy lại server để nạp lại lịch sử.
+1.  **Không giả lập dữ liệu**: Chế độ giả lập tự động phát sinh dữ liệu khi mất kết nối đã được tắt hoàn toàn theo yêu cầu hệ thống. Nếu không có dữ liệu thật hoặc token hết hạn, hệ thống sẽ báo `"Không có"` kết quả tính toán.
+2.  **Lưu trữ tạm thời**: Dữ liệu được lưu trực tiếp trên RAM để tối ưu tốc độ đọc ghi tính toán nhanh. Khi tắt server, dữ liệu sẽ bị xóa. Bạn chỉ cần thực hiện lại Bước 2 khi khởi chạy lại server để nạp lại lịch sử.

@@ -176,23 +176,7 @@ class WebSocketScraper:
             logger.error(f"Failed to process websocket message: {str(e)}. Raw: {message[:200]}")
 
     async def _run_fallback_simulation(self):
-        # Gia lap sinh ket qua moi moi 30 giay de giup nguoi dung luon co du lieu test API
-        logger.info("Running simulation mode (local fallback)")
-        
-        # Sinh san mot it lich su ban dau neu store dang rong
-        if store.get_count() == 0:
-            logger.info("Initializing store with simulated historical data...")
-            current_time = int(time.time())
-            for i in range(100, 0, -1):
-                sim_issue = str(20260628000 + i)
-                sim_numbers = [random.randint(0, 9) for _ in range(5)]
-                store.add_record(sim_issue, sim_numbers)
-        
-        # Gia lap sinh 1 ky moi
-        sim_issue = str(int(time.time() // 30))
-        sim_numbers = [random.randint(0, 9) for _ in range(5)]
-        added = store.add_record(sim_issue, sim_numbers)
-        if added:
-            logger.info(f"Simulated new issue {sim_issue}: {sim_numbers}")
+        # Che do gia lap da bi tat theo yeu cau. Chi log thong bao.
+        logger.info("Simulation mode is disabled. No simulated data will be generated.")
 
 scraper = WebSocketScraper()
