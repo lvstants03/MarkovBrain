@@ -15,18 +15,23 @@
 
 ## 🚀 Hướng Dẫn Cài Đặt & Khởi Chạy
 
-### 1. Cài đặt thư viện yêu cầu:
-Mở Terminal tại thư mục dự án và chạy lệnh:
-```bash
-pip install -r requirements.txt
-```
+### Cách 1: Sử dụng scripts tự động (Khuyên dùng trên Windows)
+* **Cài đặt & Thiết lập**: Nhấp đúp chuột chạy file [scripts/setup.bat](file:///d:/Dev/Projects/DEV_PYTHONs/Xác%20xuất/scripts/setup.bat) để tự động tạo môi trường ảo `.venv` và cài đặt các thư viện.
+* **Khởi chạy Server**: Nhấp đúp chuột chạy file [scripts/run.bat](file:///d:/Dev/Projects/DEV_PYTHONs/Xác%20xuất/scripts/run.bat) để chạy Uvicorn server. Giao diện Swagger UI sẽ chạy ở `http://localhost:8000/docs`.
+* **Chạy bộ kiểm thử (Unit Tests)**: Nhấp đúp chuột chạy file [scripts/test.bat](file:///d:/Dev/Projects/DEV_PYTHONs/Xác%20xuất/scripts/test.bat) để chạy pytest.
 
-### 2. Khởi chạy Server:
-Để chạy server cục bộ, bạn chạy lệnh sau (chạy từ thư mục cha của `src`):
-```bash
-$env:PYTHONPATH=".."; python -m uvicorn main:app --reload --port 8000
-```
-Sau khi chạy, giao diện tương tác Swagger UI sẽ khả dụng tại: **`http://localhost:8000/docs`**
+### Cách 2: Thực hiện thủ công qua dòng lệnh
+1. **Cài đặt thư viện yêu cầu**:
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+2. **Khởi chạy Server**:
+   ```bash
+   $env:PYTHONPATH="."; .venv\Scripts\python src/main.py
+   ```
+   Sau khi chạy, giao diện tương tác Swagger UI sẽ khả dụng tại: **`http://localhost:8000/docs`**
 
 ---
 
