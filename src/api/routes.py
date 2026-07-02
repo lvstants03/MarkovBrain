@@ -89,6 +89,31 @@ async def config_token(payload: ConfigTokenRequest):
         "message": f"Da cap nhat token moi va tai khoi dong ket noi WebSocket. Token: {payload.token}"
     }
 
+class ConfigFetcherRequest(BaseModel):
+    url: str = Field(..., description="Duong dan HTTP API lay ket qua, vi du: https://domain/api/drawResult")
+    interval: int = Field(default=60, ge=10, le=3600, description="Tan suat lay tu dong tinh bang giay (10s - 3600s)")
+    headers: Optional[dict] = Field(default=None, description="HTTP Headers duoi dang JSON object (cookie, x-device, etc.)")
+
+@router.post("/config-fetcher")
+async def config_fetcher(payload: ConfigFetcherRequest):
+    if not payload.url.startswith("http://") and not payload.url.startswith("https://"):
+        raise HTTPException(status_code=400, detail="Duong dan phai bat dau bang http:// hoac https://")
+    await scraper.update_fetch_config(payload.url, payload.interval, payload.headers)
+    return {
+        "status": "success",
+        "message": f"Da cap nhat HTTP fetcher: URL={payload.url}, interval={payload.interval} giay va headers."
+    }
+
+@router.post("/trigger-fetch")
+async def trigger_fetch():
+    if not scraper.fetch_url:
+        raise HTTPException(status_code=400, detail="Chua cau hinh URL de fetch")
+    imported = await scraper.trigger_fetch()
+    return {
+        "status": "success",
+        "message": f"Da dong bo xong tu dong. Da them moi {imported} ky quay vao store."
+    }
+
 @router.post("/reconnect")
 async def trigger_reconnect():
     # Chu dong dong va ket noi lai WebSocket hien tai
