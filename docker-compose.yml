@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  analyzer-api:
+    build: .
+    container_name: lottery_probability_analyzer
+    ports:
+      - "8000:8000"
+    environment:
+      - TARGET_WS_URL=wss://a1arj8.678mbf.com/ws/?token=1_362202_1782662661_121d559c6cf82f3d20fe409c8dc02e8e&x-device=pc
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - MAX_HISTORY_SIZE=10000
+    restart: always
