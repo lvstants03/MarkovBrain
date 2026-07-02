@@ -44,8 +44,8 @@ class ProbabilityAnalyzer:
                 "total_records": 0,
                 "probabilities": {},
                 "streaks": {},
-                "prediction_for_next_issue": {},
-                "prediction_streak_based": {}
+                "prediction_for_next_issue": "Không có",
+                "prediction_streak_based": "Không có"
             }
             
         df = pd.DataFrame(history)
@@ -78,17 +78,19 @@ class ProbabilityAnalyzer:
         le_stats = le_streak_stats.get(active_le_len, {"continue": 0, "switch": 0})
         total_le_transitions = le_stats["continue"] + le_stats["switch"]
         
-        pred_streak_le_switch = 0.5
+        pred_streak_le_switch = "Không có"
+        pred_streak_le_continue = "Không có"
         is_high_conf_le = False
         
         if total_le_transitions >= MIN_SAMPLES:
             pred_streak_le_switch = le_stats["switch"] / total_le_transitions
-            if pred_streak_le_switch >= CONFIDENCE_THRESHOLD or (1 - pred_streak_le_switch) >= CONFIDENCE_THRESHOLD:
+            pred_streak_le_continue = 1 - pred_streak_le_switch
+            if pred_streak_le_switch >= CONFIDENCE_THRESHOLD or pred_streak_le_continue >= CONFIDENCE_THRESHOLD:
                 is_high_conf_le = True
                 
         prob_next_le = 0.5
         prob_next_chan = 0.5
-        predicted_parity = "Skip (Low Confidence)"
+        predicted_parity = "Không có"
         
         if is_high_conf_le:
             if active_le_state: # Hien tai la Le
@@ -103,17 +105,19 @@ class ProbabilityAnalyzer:
         tai_stats = tai_streak_stats.get(active_tai_len, {"continue": 0, "switch": 0})
         total_tai_transitions = tai_stats["continue"] + tai_stats["switch"]
         
-        pred_streak_tai_switch = 0.5
+        pred_streak_tai_switch = "Không có"
+        pred_streak_tai_continue = "Không có"
         is_high_conf_tai = False
         
         if total_tai_transitions >= MIN_SAMPLES:
             pred_streak_tai_switch = tai_stats["switch"] / total_tai_transitions
-            if pred_streak_tai_switch >= CONFIDENCE_THRESHOLD or (1 - pred_streak_tai_switch) >= CONFIDENCE_THRESHOLD:
+            pred_streak_tai_continue = 1 - pred_streak_tai_switch
+            if pred_streak_tai_switch >= CONFIDENCE_THRESHOLD or pred_streak_tai_continue >= CONFIDENCE_THRESHOLD:
                 is_high_conf_tai = True
                 
         prob_next_tai = 0.5
         prob_next_xiu = 0.5
-        predicted_size = "Skip (Low Confidence)"
+        predicted_size = "Không có"
         
         if is_high_conf_tai:
             if active_tai_state: # Hien tai la Tai
@@ -160,7 +164,7 @@ class ProbabilityAnalyzer:
                 total_from_x = transitions_tai["X_T"] + transitions_tai["X_X"]
                 if total_from_x > 0:
                     pred_tai = transitions_tai["X_T"] / total_from_x
-
+ 
         return {
             "total_records": total_records,
             "probabilities": {
@@ -180,20 +184,20 @@ class ProbabilityAnalyzer:
                 }
             },
             "prediction_for_next_issue": {
-                "le_probability": round(pred_le, 4),
-                "chan_probability": round(1 - pred_le, 4),
-                "predicted_parity": "Le" if pred_le >= 0.5 else "Chan",
-                "tai_probability": round(pred_tai, 4),
-                "xiu_probability": round(1 - pred_tai, 4),
-                "predicted_size": "Tai" if pred_tai >= 0.5 else "Xiu"
+                "le_probability": round(pred_le, 4) if total_records > 10 else "Không có",
+                "chan_probability": round(1 - pred_le, 4) if total_records > 10 else "Không có",
+                "predicted_parity": ("Le" if pred_le >= 0.5 else "Chan") if total_records > 10 else "Không có",
+                "tai_probability": round(pred_tai, 4) if total_records > 10 else "Không có",
+                "xiu_probability": round(1 - pred_tai, 4) if total_records > 10 else "Không có",
+                "predicted_size": ("Tai" if pred_tai >= 0.5 else "Xiu") if total_records > 10 else "Không có"
             },
             "prediction_streak_based": {
                 "parity": {
                     "current_streak_state": "Le" if active_le_state else "Chan",
                     "current_streak_count": active_le_len,
                     "historical_samples_found": total_le_transitions,
-                    "probability_switch": round(pred_streak_le_switch, 4),
-                    "probability_continue": round(1 - pred_streak_le_switch, 4),
+                    "probability_switch": round(pred_streak_le_switch, 4) if isinstance(pred_streak_le_switch, float) else "Không có",
+                    "probability_continue": round(pred_streak_le_continue, 4) if isinstance(pred_streak_le_continue, float) else "Không có",
                     "is_high_confidence": is_high_conf_le,
                     "predicted_outcome": predicted_parity
                 },
@@ -201,8 +205,8 @@ class ProbabilityAnalyzer:
                     "current_streak_state": "Tai" if active_tai_state else "Xiu",
                     "current_streak_count": active_tai_len,
                     "historical_samples_found": total_tai_transitions,
-                    "probability_switch": round(pred_streak_tai_switch, 4),
-                    "probability_continue": round(1 - pred_streak_tai_switch, 4),
+                    "probability_switch": round(pred_streak_tai_switch, 4) if isinstance(pred_streak_tai_switch, float) else "Không có",
+                    "probability_continue": round(pred_streak_tai_continue, 4) if isinstance(pred_streak_tai_continue, float) else "Không có",
                     "is_high_confidence": is_high_conf_tai,
                     "predicted_outcome": predicted_size
                 }

@@ -17,6 +17,7 @@ pip install -r requirements.txt
 
 echo Da hoan tat cai dat!
 echo Dang khoi chay FastAPI Web Server bang Uvicorn...
+set PYTHONPATH=.
 python src/main.py
 
 pause
