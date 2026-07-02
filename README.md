@@ -1,4 +1,4 @@
-# MarkovLotto - Hệ Thống Thu Thập & Dự Đoán Xổ Số Siêu Tốc 5 Phút (pmb5p)
+# MarkovLotto - Hệ Thống Thu Thập & Dự Đoán Xổ Số Siêu Tốc 5 Phút (pmb5p) - CÔNG CỤ HỖ TRỢ NGHIÊN CỨU HỌC THUẬT - CHÚNG TÔI KHÔNG CÓ TRÁCH NHIỆM CHO NHỮNG HÀNH VI LỢI DỤNG VÀ CHIẾM ĐOẠT CỦA BẠN.
 
 `MarkovLotto` là một công cụ pair-programming giúp cào dữ liệu thời gian thực từ WebSocket của trang game chính `vip.ee8833.me` / `ee8822.me` đối với loại hình **Xổ Số Miền Bắc Siêu Tốc 5 Phút (pmb5p)** và áp dụng thuật toán **Xích Markov cấp 1** để phân tích xác suất, chuỗi bệt, từ đó đưa ra dự đoán kết quả (Tài/Xỉu, Chẵn/Lẻ) cho kỳ kế tiếp.
 
