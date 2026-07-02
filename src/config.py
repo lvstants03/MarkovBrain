@@ -11,4 +11,9 @@ class Config:
     # Kich thuoc du lieu lich su toi da de luu trong bo nho de tinh toan
     MAX_HISTORY_SIZE = int(os.getenv("MAX_HISTORY_SIZE", 10000))
 
+    # URL API HTTP de lay ket qua tu dong lam fallback/nap lich su
+    DRAWS_RESULT_URL = os.getenv("DRAWS_RESULT_URL", "")
+    AUTO_FETCH_INTERVAL = int(os.getenv("AUTO_FETCH_INTERVAL", 60))
+    DRAWS_RESULT_HEADERS = {}
+
 config = Config()
