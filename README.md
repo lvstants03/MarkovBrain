@@ -46,18 +46,20 @@ Do cơ chế bảo mật chữ ký động và mã hóa RSA của trang chính, 
 4. Sao chép toàn bộ giá trị của tham số `token=...` trong URL của kết nối đó.
 5. Truy cập Swagger UI `http://localhost:8000/docs`, tìm đến API **`POST /api/config-token`**, bấm *Try it out*, dán mã token vừa sao chép vào rồi bấm **Execute**.
 
-### Bước 2: Nạp nhanh lịch sử để tăng độ chính xác của dự đoán
-Do server lưu dữ liệu trong bộ nhớ tạm thời (RAM), lúc mới khởi động sẽ chưa có đủ số lượng kỳ quay để thuật toán dự đoán chính xác (Yêu cầu tối thiểu 10 kỳ, khuyên dùng trên 50 kỳ):
-1. Trong tab **Network** (F12) trên trình duyệt, tìm request tên là `drawResult?lottery_id=45...`.
-2. Click vào request đó -> chọn tab **Response** (Phản hồi) ở khung bên cạnh -> Copy toàn bộ chuỗi JSON hiển thị trong đó.
-3. Trên Swagger UI, tìm API **`POST /api/import-history`**, chọn *Try it out*, dán chuỗi JSON vừa copy vào ô body rồi bấm **Execute**.
+### Bước 2: Nạp nhanh lịch sử đối chứng (Tùy chọn)
+Hệ thống hiện đã được thiết lập **tự động lấy kết quả kỳ quay mới nhất** từ API `getCurrentLotteryInfo` (sử dụng token và domain đã cấu hình) bất cứ khi nào bạn gọi API `GET /api/statistics` hoặc `GET /api/history`. 
 
-### Bước 3: Xem kết quả dự đoán kỳ tiếp theo
+Tuy nhiên, để có đủ lượng dữ liệu ban đầu cho thuật toán phân tích chính xác (Markov Chain cần >10 kỳ, khuyên dùng >50 kỳ), bạn nên nạp nhanh lịch sử bằng cách:
+1. Trong tab **Network** (F12) trên trình duyệt, tìm request tên là `drawResult?lottery_id=45...`.
+2. Click vào request đó -> chọn tab **Response** (Phản hồi) -> Copy toàn bộ chuỗi JSON.
+3. Trên Swagger UI, tìm API **`POST /api/import-history`**, chọn *Try it out*, dán chuỗi JSON vào ô body rồi bấm **Execute**.
+
+### Bước 3: Xem kết quả phân tích & dự đoán
 1. Gọi API **`GET /api/statistics`** trên Swagger UI.
-2. Dữ liệu trả về sẽ hiển thị đầy đủ thông tin:
+2. Hệ thống sẽ tự động fetch kết quả mới nhất từ server game, nạp vào bộ nhớ RAM, và trả về:
     -   `probabilities`: Tỉ lệ xuất hiện thực tế (Chẵn, Lẻ, Tài, Xỉu).
     -   `streaks`: Số kỳ đang bệt liên tiếp của trạng thái hiện tại.
-    -   `prediction_for_next_issue`: Xác suất phần trăm dự đoán cho kỳ quay tiếp theo dựa trên Markov Chain cấp 1.
+    -   `prediction_for_next_issue`: Dự đoán xác suất cho kỳ quay tiếp theo dựa trên Markov Chain cấp 1.
 
 ---
 
@@ -94,7 +96,30 @@ Do server lưu dữ liệu trong bộ nhớ tạm thời (RAM), lúc mới khở
 
 ---
 
+## 🐳 Triển Khai Bằng Docker (Hỗ trợ Lưu trữ Bền vững qua Redis)
+
+Hệ thống hiện tại hỗ trợ kết nối với **Redis** để lưu trữ lịch sử lâu dài, không bị mất dữ liệu khi khởi động lại server. Nếu không cấu hình Redis, hệ thống sẽ tự động chuyển sang chế độ lưu trữ tạm thời trên **RAM** như trước.
+
+### Các bước khởi chạy bằng Docker Compose:
+1. Đảm bảo bạn đã cài đặt Docker và Docker Compose trên máy.
+2. Mở file [docker-compose.yml](file:///d:/Dev/Projects/DEV_PYTHONs/Xác%20xuất/docker-compose.yml), cấu hình lại biến môi trường `TARGET_WS_URL` với token mới của bạn.
+3. Chạy script triển khai tự động (Tự động kiểm tra trạng thái, tắt container cũ nếu có rồi mới build và chạy lại):
+   - **Trên Windows**: Nhấp đúp chuột chạy file [scripts/deploy_docker.bat](file:///d:/Dev/Projects/DEV_PYTHONs/Xác%20xuất/scripts/deploy_docker.bat).
+   - **Trên Linux/macOS**: Cấp quyền thực thi và chạy file [scripts/deploy_docker.sh](file:///d:/Dev/Projects/DEV_PYTHONs/Xác%20xuất/scripts/deploy_docker.sh):
+     ```bash
+     chmod +x scripts/deploy_docker.sh
+     ./scripts/deploy_docker.sh
+     ```
+4. Hệ thống sẽ khởi chạy:
+   - FastAPI Server tại cổng `8000` (truy cập Swagger tại `http://localhost:8000/docs`).
+   - Redis container tại cổng `6379` để làm cơ sở dữ liệu lưu trữ lịch sử lâu dài.
+
+---
+
 ## ⚠️ Lưu Ý Quan Trọng
 
-1.  **Không giả lập dữ liệu**: Chế độ giả lập tự động phát sinh dữ liệu khi mất kết nối đã được tắt hoàn toàn theo yêu cầu hệ thống. Nếu không có dữ liệu thật hoặc token hết hạn, hệ thống sẽ báo `"Không có"` kết quả tính toán.
-2.  **Lưu trữ tạm thời**: Dữ liệu được lưu trực tiếp trên RAM để tối ưu tốc độ đọc ghi tính toán nhanh. Khi tắt server, dữ liệu sẽ bị xóa. Bạn chỉ cần thực hiện lại Bước 2 khi khởi chạy lại server để nạp lại lịch sử.
+1. **Không giả lập dữ liệu**: Chế độ giả lập tự động phát sinh dữ liệu khi mất kết nối đã được tắt hoàn toàn theo yêu cầu hệ thống. Nếu không có dữ liệu thật hoặc token hết hạn, hệ thống sẽ báo `"Không có"` kết quả tính toán.
+2. **Lưu trữ**: 
+   - **Chế độ mặc định (RAM)**: Nếu chạy local không có Redis, dữ liệu được lưu trực tiếp trên RAM. Khi tắt server, dữ liệu sẽ bị xóa.
+   - **Chế độ Redis**: Khi triển khai qua Docker hoặc cấu hình biến môi trường `REDIS_HOST`, dữ liệu sẽ được lưu tự động xuống Redis database để lưu trữ bền vững.
+
