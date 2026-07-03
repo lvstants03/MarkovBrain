@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from src.database.store import store
 from src.core.analyzer import ProbabilityAnalyzer
+from src.core.scraper import scraper
 
 router = APIRouter(prefix="/api")
 
@@ -13,6 +14,7 @@ class MockDrawRequest(BaseModel):
 @router.get("/history")
 async def get_history(limit: int = Query(default=100, ge=1, le=1000)):
     # Lay danh sach lich su cac ky quay so
+    await scraper.fetch_latest_info()
     history = store.get_history(limit=limit)
     return {
         "status": "success",
@@ -24,6 +26,7 @@ async def get_history(limit: int = Query(default=100, ge=1, le=1000)):
 @router.get("/statistics")
 async def get_statistics(limit: int = Query(default=500, ge=1, le=10000)):
     # Lay ket qua phan tich thong ke xac suat Chan/Le, Tai/Xiu
+    await scraper.fetch_latest_info()
     history = store.get_history(limit=limit)
     stats = ProbabilityAnalyzer.analyze(history)
     return {
@@ -62,8 +65,6 @@ async def clear_store():
 
 class ConfigUrlRequest(BaseModel):
     url: str = Field(..., description="Duong dan WebSocket moi, vi du: wss://domain/ws")
-
-from src.core.scraper import scraper
 
 @router.post("/config-url")
 async def config_url(payload: ConfigUrlRequest):
@@ -106,8 +107,8 @@ async def config_fetcher(payload: ConfigFetcherRequest):
 
 @router.post("/trigger-fetch")
 async def trigger_fetch():
-    if not scraper.fetch_url:
-        raise HTTPException(status_code=400, detail="Chua cau hinh URL de fetch")
+    if not scraper.fetch_url and not scraper.ws_url:
+        raise HTTPException(status_code=400, detail="Chua cau hinh URL de fetch hoac WebSocket URL")
     imported = await scraper.trigger_fetch()
     return {
         "status": "success",

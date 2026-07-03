@@ -1,14 +1,28 @@
 version: '3.8'
 
 services:
-  analyzer-api:
+  app:
     build: .
-    container_name: lottery_probability_analyzer
+    container_name: markov_brain_app
     ports:
       - "8000:8000"
     environment:
-      - TARGET_WS_URL=wss://a1arj8.678mbf.com/ws/?token=1_362202_1782662661_121d559c6cf82f3d20fe409c8dc02e8e&x-device=pc
-      - API_HOST=0.0.0.0
-      - API_PORT=8000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - TARGET_WS_URL=wss://vip.ee8833.me/ws/?token=1_362202_1783008583_af4a03bef6054116d973ca32da948b69&x-device=pc
       - MAX_HISTORY_SIZE=10000
+    depends_on:
+      - redis
     restart: always
+
+  redis:
+    image: redis:alpine
+    container_name: markov_brain_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+
+volumes:
+  redis_data:

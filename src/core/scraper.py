@@ -69,8 +69,8 @@ class WebSocketScraper:
 
     async def trigger_fetch(self) -> int:
         if not self.fetch_url:
-            logger.warning("No fetch URL configured")
-            return 0
+            logger.info("No fetch URL configured. Falling back to dynamic fetch_latest_info.")
+            return await self.fetch_latest_info()
         try:
             logger.info(f"Triggering automated fetch from: {self.fetch_url}")
             headers = self.fetch_headers if self.fetch_headers else {
@@ -174,6 +174,120 @@ class WebSocketScraper:
                                                 logger.info(f"Received new real issue {issue}: {numbers}")
         except Exception as e:
             logger.error(f"Failed to process websocket message: {str(e)}. Raw: {message[:200]}")
+    async def fetch_latest_info(self) -> int:
+        from urllib.parse import urlparse, parse_qs
+        
+        domain = "vip.ee8833.me"
+        token = ""
+        try:
+            parsed = urlparse(self.ws_url)
+            if parsed.netloc:
+                domain = parsed.netloc
+            query_params = parse_qs(parsed.query)
+            if "token" in query_params:
+                token = query_params["token"][0]
+        except Exception as e:
+            logger.error(f"Error parsing ws_url: {e}")
+
+        # Fetch tu ca lich su (drawResult) va ky hien tai (getCurrentLotteryInfo)
+        url_draw = f"https://{domain}/server/lottery/drawResult?lottery_id=45&page=1&limit=50"
+        url_info = f"https://{domain}/server/lottery/getCurrentLotteryInfo?lottery_id=45"
+        if token:
+            url_draw += f"&token={token}"
+            url_info += f"&token={token}"
+        urls = [url_draw, url_info]
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json, text/plain, */*"
+        }
+        if token:
+            headers["token"] = token
+            headers["Authorization"] = f"Bearer {token}"
+            
+        imported_count = 0
+        
+        def extract_records(data) -> list:
+            records = []
+            if isinstance(data, list):
+                for item in data:
+                    records.extend(extract_records(item))
+            elif isinstance(data, dict):
+                last_issue = str(data.get("last_issue") or "")
+                issue = str(data.get("issue") or "")
+                digits = data.get("open_numbers_formatted") or data.get("openNumbers") or []
+                if isinstance(digits, str):
+                    digits = digits.split(",")
+                numbers = [int(x) for x in digits if str(x).strip().isdigit()]
+                
+                if len(numbers) == 5:
+                    # Neu co last_issue (completed), thi open_numbers_formatted thuoc ve no, tranh lech 1 ky.
+                    target_issue = last_issue if last_issue else issue
+                    if target_issue:
+                        records.append((target_issue, numbers))
+                
+                for k, v in data.items():
+                    if k not in ("issue", "last_issue", "open_numbers_formatted", "openNumbers"):
+                        records.extend(extract_records(v))
+            return records
+
+        for url in urls:
+            try:
+                logger.info(f"Auto-fetching from: {url}")
+                response = await asyncio.to_thread(
+                    requests.get,
+                    url,
+                    headers=headers,
+                    timeout=3
+                )
+                if response.status_code != 200:
+                    logger.warning(f"Fetch failed for {url} with status code: {response.status_code}")
+                    continue
+                    
+                payload = response.json()
+                extracted = extract_records(payload)
+                for issue, numbers in extracted:
+                    added = store.add_record(issue, numbers)
+                    if added:
+                        logger.info(f"Auto-imported draw result: {issue} -> {numbers}")
+                        imported_count += 1
+                
+                # Trích xuất dữ liệu lịch sử thống kê Tài/Xỉu, Chẵn/Lẻ từ statisticsInfo
+                try:
+                    total_sum = payload.get("data", {}).get("statisticsInfo", {}).get("total_sum", {})
+                    if not total_sum:
+                        total_sum = payload.get("statisticsInfo", {}).get("total_sum", {})
+                    if total_sum:
+                        data_list = total_sum.get("statisticDataList", {})
+                        big_small_list = data_list.get("bigSmall", [])
+                        odd_even_list = data_list.get("oddEven", [])
+                        
+                        issue_data = {}
+                        for item in big_small_list:
+                            iss = item.get("issue")
+                            res = item.get("result")
+                            if iss and res:
+                                issue_data[iss] = {"is_tai": res == "big"}
+                        for item in odd_even_list:
+                            iss = item.get("issue")
+                            res = item.get("result")
+                            if iss and res:
+                                if iss in issue_data:
+                                    issue_data[iss]["is_le"] = res == "odd"
+                                else:
+                                    issue_data[iss] = {"is_le": res == "odd", "is_tai": False}
+                        
+                        for iss, info in issue_data.items():
+                            if "is_tai" in info and "is_le" in info:
+                                added = store.add_calculated_record(iss, info["is_tai"], info["is_le"])
+                                if added:
+                                    imported_count += 1
+                except Exception as ex:
+                    logger.error(f"Error parsing statisticsInfo: {ex}")
+            except Exception as e:
+                logger.error(f"Error fetching from {url}: {e}")
+                
+        return imported_count
 
     async def _run_fallback_simulation(self):
         # Che do gia lap da bi tat theo yeu cau. Chi log thong bao.

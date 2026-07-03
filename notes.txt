@@ -68,3 +68,10 @@ $env:PYTHONPATH=".."; python -m uvicorn main:app --reload --port 8000
 - **Token hết hạn** → hệ thống tự chuyển sang chế độ giả lập (simulation). Log sẽ báo `Running simulation mode`.
 - Cần ít nhất **10+ kỳ** mới tính Markov Chain. Khuyến nghị **100+ kỳ** để kết quả dự đoán ý nghĩa.
 - Dữ liệu **lưu trong RAM** → khởi động lại server là mất, cần nạp lại.
+https://vip.ee8833.me/server/lottery/getCurrentLotteryInfo?lottery_id=45 data trong api này 
+1. Hết tuần này tính toán tìm cách kết nối socket ping o liên tục
+2. Thêm  vào đó tính toán thêm lịch sử dự đoán để đưa ra kết quả khả năng dự đoán của hệ thống
+3. Kiểm tra socket liên tục đảm bảo nguồn kết nối k bị gián đoạn
+4. Tích hợp Ai vào đưa ra kết luận rõ ràng
+5. Để ý các chuỗi lẻ và chẵn    
+6. Hàm get hiện tại nó lấy sẵn data rất nhiều nhưng vô nghĩa kiểm tra lại làm sạch data
