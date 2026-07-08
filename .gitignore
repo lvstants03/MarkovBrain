@@ -1,0 +1,46 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Environment Variables & Sensitive Credentials
+.env
+*.env
+.env.local
+.env.*.local
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Python Cache & Compiled Files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.htmlcov/
+.tox/
+.coverage
+.coverage.*
+nosetests.xml
+pylintrc
+htmlcov/
+
+# Project Specific & Temp files
+.codegraph/
+*.log
+logs/
+*.sqlite
+*.db
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store

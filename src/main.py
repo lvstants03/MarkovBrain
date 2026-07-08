@@ -1,7 +1,10 @@
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from contextlib import asynccontextmanager
+import os
+
 from src.config import config
 from src.core.scraper import scraper
 from src.api.routes import router
@@ -33,14 +36,16 @@ app.add_middleware(
 # Dang ky routes
 app.include_router(router)
 
-@app.get("/")
+# Load HTML content from views folder
+views_dir = os.path.dirname(os.path.abspath(__file__))
+html_path = os.path.join(views_dir, "views", "index.html")
+with open(html_path, "r", encoding="utf-8") as f:
+    HTML_CONTENT = f.read()
+
+@app.get("/", response_class=HTMLResponse)
 async def root():
-    return {
-        "app": "Lottery Probability Analyzer",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "status": "running"
-    }
+    return HTML_CONTENT
+
 
 if __name__ == "__main__":
     uvicorn.run(
