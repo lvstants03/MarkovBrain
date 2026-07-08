@@ -95,3 +95,81 @@ def test_analyzer_simple_calculations():
     assert result["streaks"]["le_streak"]["count"] == 1
     assert result["streaks"]["tai_streak"]["state"] == "Xiu"
     assert result["streaks"]["tai_streak"]["count"] == 2
+
+def test_predictions_and_ai():
+    store = DataStore()
+    store.clear()
+    
+    # 1. Test adding prediction
+    pred_data = {
+        "predicted_parity": "Le",
+        "predicted_size": "Tai",
+        "parity_confidence": 85,
+        "size_confidence": 90
+    }
+    added = store.add_prediction("20260701001", pred_data)
+    assert added is True
+    
+    # Try adding duplicate (should be False)
+    added_dup = store.add_prediction("20260701001", pred_data)
+    assert added_dup is False
+    
+    # 2. Verify prediction exists in history
+    history = store.get_prediction_history()
+    assert len(history) == 1
+    assert history[0]["issue"] == "20260701001"
+    assert history[0]["status_parity"] == "pending"
+    assert history[0]["parity_confidence"] == 85
+    assert history[0]["size_confidence"] == 90
+    
+    # 3. Resolve prediction by adding a record
+    # sum = 25 (Tai, Le)
+    store.add_record("20260701001", [5, 5, 5, 5, 5])
+    
+    history_resolved = store.get_prediction_history()
+    assert history_resolved[0]["status_parity"] == "win"
+    assert history_resolved[0]["status_size"] == "win"
+    assert history_resolved[0]["actual_parity"] == "Le"
+    assert history_resolved[0]["actual_size"] == "Tai"
+    
+    # Verify stats
+    stats = store.get_prediction_stats()
+    assert stats["parity"]["wins"] == 1
+    assert stats["size"]["wins"] == 1
+    assert stats["overall_win_rate"] == 1.0
+    
+    # 4. Test AI recommendation structure
+    # With 5 records from test_analyzer_simple_calculations, check if the analyzer returns ai_recommendation
+    history_records = [
+        {"issue": "005", "numbers": [4, 4, 4, 4, 4], "total": 20, "is_tai": False, "is_le": False},
+        {"issue": "004", "numbers": [3, 3, 3, 3, 3], "total": 15, "is_tai": False, "is_le": True},
+        {"issue": "003", "numbers": [6, 6, 6, 6, 6], "total": 30, "is_tai": True, "is_le": False},
+        {"issue": "002", "numbers": [5, 5, 5, 5, 5], "total": 25, "is_tai": True, "is_le": True},
+        {"issue": "001", "numbers": [2, 2, 2, 2, 2], "total": 10, "is_tai": False, "is_le": False},
+    ]
+    result = ProbabilityAnalyzer.analyze(history_records)
+    assert "ai_recommendation" in result
+    assert "parity" in result["ai_recommendation"]
+    assert "size" in result["ai_recommendation"]
+    assert "decision" in result["ai_recommendation"]["parity"]
+    assert "confidence" in result["ai_recommendation"]["parity"]
+    assert "rationale" in result["ai_recommendation"]["parity"]
+
+def test_analyzer_gemini_fallback():
+    # If GEMINI_API_KEY is not set or invalid, analyzer should fallback to heuristics without crash
+    from src.config import config
+    original_key = getattr(config, "GEMINI_API_KEY", "")
+    try:
+        config.GEMINI_API_KEY = "" # Ensure it's empty
+        history_records = [
+            {"issue": f"{i:03d}", "numbers": [5, 5, 5, 5, 5], "total": 25, "is_tai": i % 2 == 0, "is_le": i % 2 == 0}
+            for i in range(10)
+        ]
+        result = ProbabilityAnalyzer.analyze(history_records)
+        assert "ai_recommendation" in result
+        assert result["ai_recommendation"]["parity"]["decision"] in ["MUA CHẴN", "MUA LẺ", "BỎ QUA"]
+        assert result["ai_recommendation"]["size"]["decision"] in ["MUA TÀI", "MUA XỈU", "BỎ QUA"]
+    finally:
+        config.GEMINI_API_KEY = original_key
+
+
