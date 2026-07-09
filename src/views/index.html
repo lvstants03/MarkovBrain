@@ -3,1266 +3,568 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MarkovLotto - Bảng Điều Khiển Dự Đoán Xổ Số</title>
+    <title>MarkovLotto - Bang Dieu Khien Du Doan Xo So</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-dark: #0f172a;
-            --bg-card: rgba(30, 41, 59, 0.7);
-            --border-card: rgba(255, 255, 255, 0.08);
-            --primary: #6366f1;
-            --primary-hover: #4f46e5;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --transition: all 0.3s ease;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: 'Outfit', sans-serif;
-            background-color: var(--bg-dark);
-            color: var(--text-main);
-            min-height: 100vh;
-            background-image: radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
-                              radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.1) 0%, transparent 40%);
-            background-attachment: fixed;
-            padding: 2rem 1rem;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0;
-            padding: 0;
-            margin-left: auto;
-            margin-right: auto;
-        }
-
-        /* Header */
-        header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2rem;
-            padding-bottom: 1.5rem;
-            border-bottom: 1px solid var(--border-card);
-        }
-
-        h1 {
-            font-size: 1.8rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, #a5b4fc 0%, #6366f1 50%, #34d399 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .status-container {
-            display: flex;
-            gap: 1rem;
-        }
-
-        .badge {
-            padding: 0.5rem 0.8rem;
-            border-radius: 9999px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            background: rgba(15, 23, 42, 0.5);
-        }
-
-        .badge-pulse {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            display: inline-block;
-        }
-
-        .status-online {
-            color: var(--success);
-        }
-        .status-online .badge-pulse {
-            background-color: var(--success);
-            box-shadow: 0 0 8px var(--success);
-            animation: pulse 1.5s infinite;
-        }
-
-        .status-connecting {
-            color: var(--warning);
-        }
-        .status-connecting .badge-pulse {
-            background-color: var(--warning);
-            box-shadow: 0 0 8px var(--warning);
-            animation: pulse 1.5s infinite;
-        }
-
-        .status-offline {
-            color: var(--danger);
-        }
-        .status-offline .badge-pulse {
-            background-color: var(--danger);
-            box-shadow: 0 0 8px var(--danger);
-        }
-
-        @keyframes pulse {
-            0% { transform: scale(0.9); opacity: 0.6; }
-            50% { transform: scale(1.1); opacity: 1; }
-            100% { transform: scale(0.9); opacity: 0.6; }
-        }
-
-        /* Grid Layout */
-        .grid-3 {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .grid-2 {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
-            gap: 1.5rem;
-        }
-
-        .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-card);
-            border-radius: 16px;
-            padding: 1.5rem;
-            backdrop-filter: blur(16px);
-            transition: var(--transition);
-        }
-
-        .card:hover {
-            border-color: rgba(99, 102, 241, 0.3);
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
-        }
-
-        .card-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: var(--text-main);
-            margin-bottom: 1.2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            padding-bottom: 0.8rem;
-        }
-
-        /* Form Controls */
-        .form-group {
-            margin-bottom: 1rem;
-        }
-
-        .form-group label {
-            display: block;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            margin-bottom: 0.4rem;
-        }
-
-        .input-group {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        input[type="text"] {
-            flex: 1;
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid var(--border-card);
-            border-radius: 8px;
-            padding: 0.6rem 0.8rem;
-            color: var(--text-main);
-            font-family: inherit;
-            outline: none;
-            transition: var(--transition);
-        }
-
-        input[type="text"]:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
-        }
-
-        .form-select {
-            width: 100%;
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid var(--border-card);
-            border-radius: 8px;
-            padding: 0.6rem 0.8rem;
-            color: var(--text-main);
-            font-family: inherit;
-            outline: none;
-            transition: var(--transition);
-            cursor: pointer;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.6);
-            align-items: center;
-            justify-content: center;
-        }
-
-        .form-select:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
-        }
-
-        .form-select option {
-            background: var(--bg-dark);
-            color: var(--text-main);
-        }
-
-        .btn {
-            background: var(--primary);
-            color: var(--text-main);
-            border: none;
-            border-radius: 8px;
-            padding: 0.6rem 1.2rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: var(--transition);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.4rem;
-        }
-
-        .btn:hover {
-            background: var(--primary-hover);
-        }
-
-        .btn-secondary {
-            background: rgba(148, 163, 184, 0.1);
-            color: var(--text-main);
-        }
-        .btn-secondary:hover {
-            background: rgba(148, 163, 184, 0.2);
-        }
-
-        .btn-danger {
-            background: rgba(239, 68, 68, 0.1);
-            color: var(--danger);
-            border: 1px solid rgba(239, 68, 68, 0.2);
-        }
-        .btn-danger:hover {
-            background: rgba(239, 68, 68, 0.2);
-        }
-
-        .btn-group {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 1rem;
-        }
-
-        /* AI Recommendation Cards */
-        .ai-recommendation {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
-
-        .rec-box {
-            background: rgba(15, 23, 42, 0.4);
-            border-radius: 12px;
-            padding: 1rem;
-            border-left: 4px solid var(--primary);
-        }
-
-        .rec-box.win-recommendation {
-            border-left-color: var(--success);
-            background: linear-gradient(90deg, rgba(16, 185, 129, 0.05) 0%, transparent 100%);
-        }
-
-        .rec-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.5rem;
-        }
-
-        .rec-decision {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: var(--text-main);
-        }
-
-        .decision-badge {
-            font-size: 0.75rem;
-            padding: 0.2rem 0.5rem;
-            border-radius: 4px;
-            font-weight: 700;
-            text-transform: uppercase;
-        }
-
-        .decision-buy {
-            background: rgba(16, 185, 129, 0.2);
-            color: var(--success);
-        }
-
-        .decision-nobet {
-            background: rgba(148, 163, 184, 0.2);
-            color: var(--text-muted);
-        }
-
-        .rec-confidence {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: var(--primary);
-        }
-
-        .progress-bar-container {
-            width: 100%;
-            height: 6px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 9999px;
-            overflow: hidden;
-            margin-bottom: 0.8rem;
-        }
-
-        .progress-bar {
-            height: 100%;
-            background: linear-gradient(90deg, var(--primary) 0%, var(--success) 100%);
-            border-radius: 9999px;
-            transition: width 0.5s ease;
-        }
-
-        .rec-rationale {
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            line-height: 1.4;
-        }
-
-        /* Stat Grid */
-        .stat-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1rem;
-            margin-bottom: 1.2rem;
-        }
-
-        .stat-box {
-            background: rgba(15, 23, 42, 0.4);
-            border-radius: 12px;
-            padding: 0.8rem;
-            text-align: center;
-        }
-
-        .stat-val {
-            font-size: 1.4rem;
-            font-weight: 700;
-            color: var(--text-main);
-        }
-
-        .stat-label {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-top: 0.2rem;
-        }
-
-        /* Tables */
-        .table-container {
-            max-height: 350px;
-            overflow-y: auto;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.85rem;
-            text-align: left;
-        }
-
-        th {
-            background: rgba(15, 23, 42, 0.8);
-            color: var(--text-muted);
-            font-weight: 600;
-            padding: 0.75rem 1rem;
-            position: sticky;
-            top: 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        td {
-            padding: 0.75rem 1rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.02);
-            color: var(--text-main);
-        }
-
-        tr:hover td {
-            background: rgba(255, 255, 255, 0.02);
-        }
-
-        .ball-container {
-            display: flex;
-            gap: 0.3rem;
-        }
-
-        .ball {
-            width: 22px;
-            height: 22px;
-            border-radius: 50%;
-            background: rgba(99, 102, 241, 0.2);
-            color: var(--text-main);
-            border: 1px solid rgba(99, 102, 241, 0.4);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.75rem;
-            font-weight: 700;
-        }
-
-        .status-badge {
-            padding: 0.2rem 0.4rem;
-            border-radius: 4px;
-            font-size: 0.7rem;
-            font-weight: 700;
-        }
-
-        .status-win {
-            background: rgba(16, 185, 129, 0.2);
-            color: var(--success);
-        }
-
-        .status-lose {
-            background: rgba(239, 68, 68, 0.2);
-            color: var(--danger);
-        }
-
-        .status-pending {
-            background: rgba(245, 158, 11, 0.2);
-            color: var(--warning);
-        }
-
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: rgba(15, 23, 42, 0.2);
-        }
-        ::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 99px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-    </style>
+    <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <header>
-            <h1>🧠 MarkovLotto Dashboard <span style="font-size: 1.1rem; font-weight: 500; color: var(--success); margin-left: 10px;" id="activeGameTitle">(Miền Bắc 5 Phút)</span></h1>
-            <div class="status-container">
-                <div class="badge status-online">
+    <div class="app-wrapper">
+        <!-- Sidebar Layout -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <div class="sidebar-logo-glow">M</div>
+                <span class="sidebar-brand-name">MarkovLotto AI</span>
+            </div>
+            
+            <nav class="sidebar-menu">
+                <span class="sidebar-menu-title">Chức Năng Chính</span>
+                <a class="nav-item active" onclick="switchTab('dashboardTab')">
+                    <span class="nav-item-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>
+                    </span>
+                    Bảng Điều Khiển
+                </a>
+                <a class="nav-item" onclick="switchTab('tradingTab')">
+                    <span class="nav-item-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+                    </span>
+                    Giao Dịch Giả Lập
+                </a>
+                <a class="nav-item" onclick="switchTab('connectionTab')">
+                    <span class="nav-item-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+                    </span>
+                    Đồng Bộ & Kết Nối
+                </a>
+
+                <span class="sidebar-menu-title">Tiện Ích</span>
+                <a class="nav-item" onclick="openAutomationModal()">
+                    <span class="nav-item-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                    </span>
+                    Hướng Dẫn Auto-Sync
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div id="sidebarWsStatusBadge" class="badge status-offline">
                     <span class="badge-pulse"></span>
-                    API Status: Online
+                    Disconnected
                 </div>
-                <div id="wsStatusBadge" class="badge status-offline">
-                    <span class="badge-pulse"></span>
-                    Socket: Disconnected
+                <div style="font-size: 0.78rem; display: flex; flex-direction: column; gap: 0.2rem;">
+                    <div style="color: var(--text-muted);">Ví thật của bạn:</div>
+                    <div id="sidebarRealBalanceVal" style="font-weight: 700; color: var(--success);">0 VND</div>
                 </div>
-                <div id="aiEngineBadge" class="badge" style="background: rgba(99, 102, 241, 0.15); color: var(--primary); border: 1px solid rgba(99, 102, 241, 0.3);">
-                    <span class="badge-pulse" style="background-color: var(--primary);"></span>
-                    AI Engine: Heuristics
+                <div style="font-size: 0.78rem; display: flex; flex-direction: column; gap: 0.2rem;">
+                    <div style="color: var(--text-muted);">Ví demo:</div>
+                    <div id="sidebarDemoBalanceVal" style="font-weight: 700; color: var(--primary);">10,000,000 VND</div>
                 </div>
-            </div>
-        </header>
-
-        <!-- Main Realtime Recommendations & Statistics -->
-        <div class="grid-3">
-            <!-- AI Parity Recommendation -->
-            <div class="card">
-                <div class="card-title">
-                    <span>Khuyến Nghị Chẵn / Lẻ</span>
-                    <span style="font-size: 0.75rem; color: var(--text-muted);" id="parityNextIssue">Kỳ tiếp theo</span>
-                </div>
-                <div class="ai-recommendation">
-                    <div id="parityRecBox" class="rec-box">
-                        <div class="rec-header">
-                            <div id="parityDecision" class="rec-decision">BỎ QUA</div>
-                            <span id="parityDecisionBadge" class="decision-badge decision-nobet">NO BET</span>
-                        </div>
-                        <div class="rec-confidence" id="parityConfidence">Độ tin cậy: 50%</div>
-                        <div class="progress-bar-container">
-                            <div class="progress-bar" id="parityConfidenceBar" style="width: 50%"></div>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin: 6px 0 8px 0; color: var(--text-muted);">
-                            <span>Xác suất Lẻ: <strong id="probLeVal" style="color: #fb7185;">-%</strong></span>
-                            <span>Xác suất Chẵn: <strong id="probChanVal" style="color: #34d399;">-%</strong></span>
-                        </div>
-                        <p class="rec-rationale" id="parityRationale">Đang tải tín hiệu dữ liệu xổ số...</p>
-                    </div>
-                    <div class="stat-grid" style="margin-bottom: 0;">
-                        <div class="stat-box">
-                            <div class="stat-val" id="streakParityState">-</div>
-                            <div class="stat-label">Bệt Hiện Tại</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-val" id="streakParityCount">0</div>
-                            <div class="stat-label">Số Kỳ Bệt</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-val" id="streakParityMax">0</div>
-                            <div class="stat-label">Kỷ Lục Bệt</div>
-                        </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.3rem;">
+                    <button class="btn btn-secondary" onclick="triggerGameReload()" style="font-size: 0.72rem; padding: 0.35rem 0.5rem; background: rgba(99, 102, 241, 0.12); border-color: rgba(99, 102, 241, 0.25); color: #a5b4fc; font-weight: 600; width: 100%;">Tải Lại Game</button>
+                    <div style="display: flex; gap: 0.3rem; width: 100%;">
+                        <button class="btn btn-secondary" onclick="clearDemoBets()" style="font-size: 0.72rem; padding: 0.3rem 0.5rem; background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.25); color: #f87171; flex: 1;">Xóa Lịch Sử</button>
+                        <button class="btn btn-secondary" onclick="resetDemoBalance()" style="font-size: 0.72rem; padding: 0.3rem 0.5rem; flex: 1;">Reset</button>
                     </div>
                 </div>
             </div>
+        </aside>
 
-            <!-- AI Size Recommendation -->
-            <div class="card">
-                <div class="card-title">
-                    <span>Khuyến Nghị Tài / Xỉu</span>
-                    <span style="font-size: 0.75rem; color: var(--text-muted);" id="sizeNextIssue">Kỳ tiếp theo</span>
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- App Header -->
+            <header class="app-header">
+                <div class="header-title-section">
+                    <h1 class="header-title">MarkovLotto AI <span id="activeGameTitle" style="color: var(--success); font-size: 1.05rem;">(Đang tải...)</span></h1>
+                    <div class="header-subtitle">Phân Tích Xác Suất và Hỗ Trợ Tự Động Đặt Cược Giả Lập</div>
                 </div>
-                <div class="ai-recommendation">
-                    <div id="sizeRecBox" class="rec-box">
-                        <div class="rec-header">
-                            <div id="sizeDecision" class="rec-decision">BỎ QUA</div>
-                            <span id="sizeDecisionBadge" class="decision-badge decision-nobet">NO BET</span>
-                        </div>
-                        <div class="rec-confidence" id="sizeConfidence">Độ tin cậy: 50%</div>
-                        <div class="progress-bar-container">
-                            <div class="progress-bar" id="sizeConfidenceBar" style="width: 50%"></div>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin: 6px 0 8px 0; color: var(--text-muted);">
-                            <span>Xác suất Tài: <strong id="probTaiVal" style="color: #f59e0b;">-%</strong></span>
-                            <span>Xác suất Xỉu: <strong id="probXiuVal" style="color: #38bdf8;">-%</strong></span>
-                        </div>
-                        <p class="rec-rationale" id="sizeRationale">Đang tải tín hiệu dữ liệu xổ số...</p>
+                
+                <div class="header-actions">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">Chế độ game:</span>
+                        <select id="gameSelect" class="form-select" onchange="changeGame()" style="width: 170px; padding: 0.45rem 0.75rem; font-size: 0.85rem; font-weight: 600;">
+                            <option value="47_mb45g">Miền Bắc 45 Giây</option>
+                            <option value="48_mb75g">Miền Bắc 75 Giây</option>
+                            <option value="45_pmb5p">Miền Bắc 5 Phút</option>
+                        </select>
+                        <button class="btn btn-secondary" onclick="fetchRealtimeData()" title="Tai lai du lieu" style="padding: 0.45rem; height: 35px; display: inline-flex; align-items: center; justify-content: center;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        </button>
                     </div>
-                    <div class="stat-grid" style="margin-bottom: 0;">
-                        <div class="stat-box">
-                            <div class="stat-val" id="streakSizeState">-</div>
-                            <div class="stat-label">Bệt Hiện Tại</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-val" id="streakSizeCount">0</div>
-                            <div class="stat-label">Số Kỳ Bệt</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-val" id="streakSizeMax">0</div>
-                            <div class="stat-label">Kỷ Lục Bệt</div>
-                        </div>
+                    
+                    <div id="aiEngineBadge" class="badge" style="background: rgba(99, 102, 241, 0.15); color: var(--primary); border: 1px solid rgba(99, 102, 241, 0.3);">
+                        <span class="badge-pulse" style="background-color: var(--primary);"></span>
+                        AI Engine: Loading...
                     </div>
                 </div>
-            </div>
+            </header>
 
-            <!-- Prediction Performance (Win Rate) -->
-            <div class="card">
-                <div class="card-title">
-                    <span>Tỷ Lệ Thắng Hệ Thống</span>
-                    <a href="/docs" target="_blank" style="font-size: 0.75rem; color: var(--primary); text-decoration: none;">Swagger Docs</a>
-                </div>
-                <div class="ai-recommendation">
-                    <div class="stat-grid">
-                        <div class="stat-box" style="grid-column: span 3; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2);">
-                            <div class="stat-val" id="overallWinRate" style="font-size: 2rem; color: #a5b4fc;">0.0%</div>
-                            <div class="stat-label" style="font-weight: 600;">Tỷ Lệ Thắng Tổng Hợp</div>
+            <!-- TAB 1: DASHBOARD TAB -->
+            <div id="dashboardTab" class="tab-panel active">
+                <!-- Metrics Summary Row -->
+                <div class="metrics-row">
+                    <div class="metric-card">
+                        <div class="card-title">Hiệu Suất Toàn Cục</div>
+                        <div class="metric-val" id="overallWinRate" style="color: var(--primary);">-%</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">Tỷ lệ thắng trung bình các hạng mục cược</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="card-title">Thắng Cược Chẵn/Lẻ</div>
+                        <div class="metric-val" id="parityWinRate" style="color: var(--success);">-%</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between;">
+                            <span>Tỷ lệ thắng Chẵn/Lẻ</span>
+                            <span id="parityWinRatio" style="font-weight: 600;">0/0</span>
                         </div>
                     </div>
-                    <div class="stat-grid" style="margin-bottom: 0;">
-                        <div class="stat-box">
-                            <div class="stat-val" id="parityWinRate">0.0%</div>
-                            <div class="stat-label">Chẵn Lẻ (Win)</div>
-                            <div class="stat-label" id="parityWinRatio" style="font-size: 0.65rem; color: var(--text-muted);">0/0</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-val" id="sizeWinRate">0.0%</div>
-                            <div class="stat-label">Tài Xỉu (Win)</div>
-                            <div class="stat-label" id="sizeWinRatio" style="font-size: 0.65rem; color: var(--text-muted);">0/0</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-val" id="totalRecordsAnalyzed">0</div>
-                            <div class="stat-label">Tổng Kỳ Phân Tích</div>
+                    <div class="metric-card">
+                        <div class="card-title">Thắng Cược Tài/Xỉu</div>
+                        <div class="metric-val" id="sizeWinRate" style="color: var(--warning);">-%</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between;">
+                            <span>Tỷ lệ thắng Tài/Xỉu</span>
+                            <span id="sizeWinRatio" style="font-weight: 600;">0/0</span>
                         </div>
                     </div>
+                    <div class="metric-card">
+                        <div class="card-title">Tổng Kỳ Đã Phân Tích</div>
+                        <div class="metric-val" id="totalRecordsAnalyzed" style="color: var(--text-main);">0</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">Kỷ lục học và lọc dữ liệu liên tục</div>
+                    </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Configurations & Operations Controls -->
-        <div class="grid-3" style="grid-template-columns: 1fr; margin-bottom: 1.5rem;">
-            <div class="card">
-                <div class="card-title">Cấu Hình Trò Chơi & Token Kết Nối</div>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
-                    <!-- Game Select -->
-                    <div>
-                        <div class="form-group">
-                            <label for="gameSelect">Chọn Trò Chơi Xổ Số</label>
-                            <select id="gameSelect" class="form-select" onchange="changeGame()">
-                                <option value="45_pmb5p">Miền Bắc 5 Phút (Mặc định)</option>
-                                <option value="47_mb45g">Miền Bắc 45 Giây</option>
-                                <option value="48_mb75g">Miền Bắc 75 Giây</option>
-                            </select>
+                <!-- Recommendation & Next Issue Predictions -->
+                <div class="grid-2" style="margin-bottom: 1.5rem;">
+                    <!-- Recommendation Card: Parity -->
+                    <div class="card" style="border-left: 4px solid var(--primary);">
+                        <div class="card-title">
+                            <span>Khuyến Nghị Cược: Chẵn / Lẻ</span>
+                            <span id="parityNextIssue" style="font-size: 0.8rem; background: rgba(99, 102, 241, 0.15); color: var(--primary); padding: 0.2rem 0.5rem; border-radius: 4px;">Kỳ tiếp: Loading...</span>
                         </div>
-                    </div>
-                    <!-- Token form -->
-                    <div>
-                        <div class="form-group">
-                            <label for="tokenInput">Token kết nối WebSocket mới (Lấy từ F12 Network WS `/ws/`)</label>
-                            <div class="input-group">
-                                <input type="text" id="tokenInput" placeholder="Dán token vào đây..." autocomplete="off">
-                                <button class="btn" onclick="updateToken()">Cập nhật Token</button>
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div class="prob-stats-container">
+                                <div class="prob-item">
+                                    <span class="prob-label">Xác suất Lẻ</span>
+                                    <span class="prob-value" id="probLeVal" style="color: #fb7185;">-%</span>
+                                </div>
+                                <div class="prob-item">
+                                    <span class="prob-label">Xác suất Chẵn</span>
+                                    <span class="prob-value" id="probChanVal" style="color: var(--success);">-%</span>
+                                </div>
                             </div>
-                            <small style="color: var(--text-muted); display: block; margin-top: 5px;">💡 Muốn tự động hóa 100% không cần copy tay? <a href="#" onclick="showAutomationModal(); return false;" style="color: var(--primary); text-decoration: underline;">Xem hướng dẫn Auto-Sync Token</a></small>
-                        </div>
-                    </div>
-                    <!-- System Controls -->
-                    <div style="display: flex; flex-direction: column; justify-content: flex-end;">
-                        <div class="form-group">
-                            <label>Hành động điều khiển nhanh kết nối socket và bộ nhớ dữ liệu</label>
-                            <div class="btn-group">
-                                <button class="btn btn-secondary" onclick="triggerReconnect()">Kết Nối Lại Socket</button>
-                                <button class="btn btn-secondary" onclick="triggerFetch()">Đồng Bộ HTTP Fallback</button>
-                                <button class="btn btn-danger" onclick="clearData()">Xóa Sạch Bộ Nhớ</button>
+                            
+                            <div style="margin-top: 0.4rem; padding: 0.4rem 0.6rem; background: rgba(15, 23, 42, 0.3); border-radius: 6px; font-size: 0.8rem; display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Chỉ số bệt:</span>
+                                <span id="streakParityText" style="font-weight: 600; color: #fb7185;">-</span>
+                            </div>
+
+                            <div class="rec-box" id="parityRecBox">
+                                <div class="decision-row">
+                                    <span style="font-weight: 700; font-size: 1.15rem; color: #fff;" id="parityDecision">BỎ QUA</span>
+                                    <span class="decision-badge decision-nobet" id="parityDecisionBadge">NO BET</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar" id="parityConfidenceBar" style="width: 0%;"></div>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-top: 0.1rem; color: var(--text-muted);">
+                                    <span id="parityConfidence">Độ tin cậy: 0%</span>
+                                    <span>Tiền cược kỳ tới: <strong id="parityNextBetVal" style="color: #a5b4fc;">0 VND</strong></span>
+                                </div>
+                                <p class="rec-rationale" id="parityRationale">-</p>
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
 
-        <!-- Data logs and Prediction tables -->
-        <div class="grid-2">
-            <!-- Draw history (Cleaned) -->
-            <div class="card">
-                <div class="card-title">Lịch Sử 15 Kỳ Quay Số Gần Nhất <span style="font-size: 0.9rem; font-weight: normal; color: var(--text-muted); margin-left: 8px;" id="drawHistoryGameLabel"></span></div>
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Mã Kỳ (Issue)</th>
-                                <th>Thời Gian</th>
-                                <th>5 Số Kết Quả</th>
-                                <th>Tổng</th>
-                                <th>Tài / Xỉu</th>
-                                <th>Chẵn / Lẻ</th>
-                            </tr>
-                        </thead>
-                        <tbody id="drawHistoryTable">
-                            <tr>
-                                <td colspan="6" style="text-align: center; color: var(--text-muted);">Đang tải dữ liệu xổ số...</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <!-- Recommendation Card: Size -->
+                    <div class="card" style="border-left: 4px solid var(--warning);">
+                        <div class="card-title">
+                            <span>Khuyến Nghị Cược: Tài / Xỉu</span>
+                            <span id="sizeNextIssue" style="font-size: 0.8rem; background: rgba(245, 158, 11, 0.15); color: var(--warning); padding: 0.2rem 0.5rem; border-radius: 4px;">Kỳ tiếp: Loading...</span>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div class="prob-stats-container">
+                                <div class="prob-item">
+                                    <span class="prob-label">Xác suất Tài</span>
+                                    <span class="prob-value" id="probTaiVal" style="color: var(--warning);">-%</span>
+                                </div>
+                                <div class="prob-item">
+                                    <span class="prob-label">Xác suất Xỉu</span>
+                                    <span class="prob-value" id="probXiuVal" style="color: #38bdf8;">-%</span>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-top: 0.4rem; padding: 0.4rem 0.6rem; background: rgba(15, 23, 42, 0.3); border-radius: 6px; font-size: 0.8rem; display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Chỉ số bệt:</span>
+                                <span id="streakSizeText" style="font-weight: 600; color: var(--warning);">-</span>
+                            </div>
+
+                            <div class="rec-box" id="sizeRecBox">
+                                <div class="decision-row">
+                                    <span style="font-weight: 700; font-size: 1.15rem; color: #fff;" id="sizeDecision">BỎ QUA</span>
+                                    <span class="decision-badge decision-nobet" id="sizeDecisionBadge">NO BET</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar" id="sizeConfidenceBar" style="width: 0%;"></div>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-top: 0.1rem; color: var(--text-muted);">
+                                    <span id="sizeConfidence">Độ tin cậy: 0%</span>
+                                    <span>Tiền cược kỳ tới: <strong id="sizeNextBetVal" style="color: #a5b4fc;">0 VND</strong></span>
+                                </div>
+                                <p class="rec-rationale" id="sizeRationale">-</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Grid layout of Logs and history -->
+                <div class="grid-2">
+                    <!-- History list -->
+                    <div class="card">
+                        <div class="card-title">
+                            <span>Kết quả 15 kỳ quay gần nhất <span id="drawHistoryGameLabel" style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;"></span></span>
+                            <a href="/export/history" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.2rem 0.6rem; text-decoration: none;">Xuất Excel</a>
+                        </div>
+                        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Kỳ Xổ Số</th>
+                                        <th>Thời Gian</th>
+                                        <th>Bóng Số</th>
+                                        <th>Tổng</th>
+                                        <th>Tai/Xỉu</th>
+                                        <th>Chẵn/Lẻ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="drawHistoryTable">
+                                    <tr>
+                                        <td colspan="6" style="text-align: center; color: var(--text-muted);">Đang tải dữ liệu xổ số...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Prediction History -->
+                    <div class="card">
+                        <div class="card-title">
+                            <span>Lịch sử dự đoán gần nhất <span id="predHistoryGameLabel" style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;"></span></span>
+                            <a href="/export/predictions" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.2rem 0.6rem; text-decoration: none;">Xuất Excel</a>
+                        </div>
+                        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Kỳ Mở</th>
+                                        <th>Thời Gian</th>
+                                        <th>Dự Đoán P.</th>
+                                        <th>% P.</th>
+                                        <th>Dự Đoán S.</th>
+                                        <th>% S.</th>
+                                        <th>Kết Quả Thật</th>
+                                        <th>Trạng Thái</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="predictionHistoryTable">
+                                    <tr>
+                                        <td colspan="8" style="text-align: center; color: var(--text-muted);">Đang tải dữ liệu lịch sử dự đoán...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Market Health & Weird Breaks Analysis -->
+                <div class="grid-2" style="margin-top: 1.5rem;">
+                    <!-- Sliding Blocks -->
+                    <div class="card">
+                        <div class="card-title">Báo Cáo Sức Khỏe Thị Trường (30 Kỳ)</div>
+                        <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; font-size: 0.95rem; font-weight: 500;">
+                            <span>Khối 30 kỳ gần nhất: <span id="latestBlockStatus" style="color: var(--success);">-</span></span>
+                            <span>Hiệu suất thắng: <span id="latestBlockWinRate" style="color: var(--primary);">-</span></span>
+                        </div>
+                        <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Phạm Vi Kỳ</th>
+                                        <th>Thời Gian</th>
+                                        <th>Số Lượt Cược</th>
+                                        <th>Tỷ Lệ Thắng</th>
+                                        <th>Trạng Thái</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="marketBlocksTable">
+                                    <tr>
+                                        <td colspan="5" style="text-align: center; color: var(--text-muted);">Đang tải dữ liệu sức khỏe thị trường...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Weird Breaks -->
+                    <div class="card">
+                        <div class="card-title">Kỳ Gãy Lạ Gần Đây (Xác suất cược >= 68% nhưng thua)</div>
+                        <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Kỳ Số</th>
+                                        <th>Thời Gian</th>
+                                        <th>Chi Tiết Kỳ Gãy / Tỷ Lệ Của AI</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="weirdBreaksTable">
+                                    <tr>
+                                        <td colspan="3" style="text-align: center; color: var(--text-muted);">Đang quét phân tích...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Prediction logs -->
-            <div class="card">
-                <div class="card-title">Kết Quả Lịch Sử Dự Đoán <span style="font-size: 0.9rem; font-weight: normal; color: var(--text-muted); margin-left: 8px;" id="predHistoryGameLabel"></span></div>
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Kỳ Dự Đoán</th>
-                                <th>Thời Gian</th>
-                                <th>Dự Đoán Parity</th>
-                                <th>% Parity</th>
-                                <th>Dự Đoán Size</th>
-                                <th>% Size</th>
-                                <th>Kết Quả Thật</th>
-                                <th>Trạng Thái</th>
-                            </tr>
-                        </thead>
-                        <tbody id="predictionHistoryTable">
-                            <tr>
-                                <td colspan="8" style="text-align: center; color: var(--text-muted);">Chưa có lịch sử dự đoán nào...</td>
-                            </tr>
-                        </tbody>
-                    </table>
+            <!-- TAB 2: SIMULATED TRADING TAB -->
+            <div id="tradingTab" class="tab-panel">
+                <div class="grid-3" style="margin-bottom: 1.5rem;">
+                    <!-- Simulated Balance Card -->
+                    <div class="card" style="border-color: rgba(99, 102, 241, 0.2); background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(15, 23, 42, 0.4) 100%);">
+                        <div class="card-title">
+                            <span>Số Dư Giả Lập (Demo)</span>
+                            <div style="display: flex; gap: 0.3rem;">
+                                <button class="btn btn-secondary" onclick="clearDemoBets()" style="font-size: 0.75rem; padding: 0.25rem 0.6rem; background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.25); color: #f87171;">Xóa Lịch Sử</button>
+                                <button class="btn btn-secondary" onclick="resetDemoBalance()" style="font-size: 0.75rem; padding: 0.25rem 0.6rem;">Reset</button>
+                            </div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem 0;">
+                            <div id="demoBalanceVal" style="font-size: 2.2rem; font-weight: 700; color: var(--primary); letter-spacing: -0.5px;">10,000,000 VND</div>
+                            
+                            <!-- Overdraft Warning Banner -->
+                            <div id="overdraftWarningBanner" style="display: none; padding: 0.5rem 0.75rem; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 6px; color: #f87171; font-size: 0.82rem; font-weight: 600; line-height: 1.4;">
+                                CẢNH BÁO: Số dư giả lập không đủ để đặt cược kỳ tiếp theo! Vui lòng Reset số dư hoặc giảm tiền cược xuống.
+                            </div>
+                            
+                            <div style="display: flex; gap: 0.4rem;">
+                                <input type="text" id="demoBalanceEditInput" placeholder="Sửa số dư..." autocomplete="off" style="flex: 1; padding: 0.35rem 0.5rem; background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border-card); border-radius: 4px; color: var(--text-main); font-size: 0.85rem;">
+                                <button class="btn" style="padding: 0.35rem 0.8rem; font-size: 0.8rem;" onclick="setManualDemoBalance()">Sửa</button>
+                            </div>
+                            
+                            <!-- Smart Bet Recommendation Panel -->
+                            <div id="smartBetRecommendPanel" style="display: none; padding: 0.6rem 0.75rem; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 6px; font-size: 0.82rem;">
+                                <div style="font-weight: 600; color: #a5b4fc; margin-bottom: 0.4rem;">Gợi ý tiền cược theo Martingale x3:</div>
+                                <div style="display: flex; flex-direction: column; gap: 0.3rem;" id="smartBetOptions"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Simulated Bet Config Card -->
+                    <div class="card" style="grid-column: span 2;">
+                        <div class="card-title">Cấu Hình Lượng Tiền Cược</div>
+                        <div style="display: flex; flex-direction: column; gap: 0.6rem; padding: 0.2rem 0;">
+                            <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 0.5rem;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <div class="input-group">
+                                        <input type="text" id="demoBetAmountInput" placeholder="Mức cược..." value="100,000" autocomplete="off" style="text-align: right; font-weight: 600; font-size: 1.05rem; color: var(--primary); width: 100%;">
+                                    </div>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <select id="betStrategySelect" class="form-select" onchange="updateDemoBetAmount()" style="font-weight: 600; font-size: 0.92rem; height: 100%;">
+                                        <option value="fixed">Co dinh (Fixed)</option>
+                                        <option value="martingale_x3">Gap thep x3 (Martingale)</option>
+                                        <option value="fixed_fractional_3">Bao toan - 3% von hien tai</option>
+                                        <option value="kelly_third">Can bang - Kelly 1/3 (~5.3%)</option>
+                                        <option value="kelly_half_stoploss">Tang toc - Kelly 1/2 + Stop 24h (8%)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <!-- Quick Bet Buttons -->
+                            <div style="display: flex; flex-wrap: wrap; gap: 0.3rem;">
+                                <button class="btn btn-secondary" onclick="setQuickBetAmount(10000)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">10K</button>
+                                <button class="btn btn-secondary" onclick="setQuickBetAmount(30000)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">30K</button>
+                                <button class="btn btn-secondary" onclick="setQuickBetAmount(50000)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">50K</button>
+                                <button class="btn btn-secondary" onclick="setQuickBetAmount(100000)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">100K</button>
+                                <button class="btn btn-secondary" onclick="setQuickBetAmount(300000)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">300K</button>
+                                <button class="btn btn-secondary" onclick="setQuickBetAmount(500000)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">500K</button>
+                                <button class="btn btn-secondary" onclick="setQuickBetAmount(1000000)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">1M</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
-        </div>
-        
-        <!-- Market Health & Weird Breaks Analysis -->
-        <div class="grid-2" style="margin-top: 1.5rem;">
-            <!-- Sliding Blocks -->
-            <div class="card">
-                <div class="card-title">Báo Cáo Sức Khỏe Thị Trường (30 Kỳ)</div>
-                <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; font-size: 0.95rem; font-weight: 500;">
-                    <span>Khối 30 kỳ gần nhất: <span id="latestBlockStatus" style="color: var(--success);">-</span></span>
-                    <span>Hiệu suất thắng: <span id="latestBlockWinRate" style="color: var(--primary);">-</span></span>
+
+                <!-- Risk Analysis Panel (Max Streak) -->
+                <div id="riskAnalysisPanel" class="card" style="margin-bottom: 1rem; padding: 1rem 1.5rem; border-left: 4px solid var(--primary); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                    <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                        <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">Kha Nang Chiu Dung Chuoi Thua Lien Tiep</span>
+                        <div id="riskWarningText" style="font-size: 0.85rem; font-weight: 600;">Von rat an toan!</div>
+                    </div>
+                    <div style="font-size: 1.6rem; font-weight: 700;" id="maxStreakVal">0 ky</div>
                 </div>
-                <div class="table-container" style="max-height: 250px; overflow-y: auto;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Phạm Vi Kỳ</th>
-                                <th>Thời Gian</th>
-                                <th>Số Lượt Cược</th>
-                                <th>Tỷ Lệ Thắng</th>
-                                <th>Trạng Thái</th>
-                            </tr>
-                        </thead>
-                        <tbody id="marketBlocksTable">
-                            <tr>
-                                <td colspan="5" style="text-align: center; color: var(--text-muted);">Đang tải dữ liệu sức khỏe thị trường...</td>
-                            </tr>
-                        </tbody>
-                    </table>
+
+                <!-- Capital Risk Panel (detailed) -->
+                <div id="capitalRiskPanel" class="card" style="display:none; margin-bottom: 1.5rem; padding: 1rem 1.5rem; border-left: 4px solid #6366f1;">
+                    <div class="card-title" style="margin-bottom:0.7rem;">Phan Tich Rui Ro Quan Ly Von</div>
+                    <!-- Content rendered by renderCapitalRiskPanel() in app.js -->
+                </div>
+
+                <!-- Simulated Bet Logs Table -->
+                <div class="card">
+                    <div class="card-title">
+                        <span>Nhật Ký Cược Giả Lập (Simulated Bets)</span>
+                        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;">Hiển thị 50 giao dịch gần nhất</span>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Thời Gian</th>
+                                    <th>Kỳ Quay</th>
+                                    <th>Hạng Mục</th>
+                                    <th>Cửa Đặt</th>
+                                    <th style="text-align: right;">Lượng Cược</th>
+                                    <th>Trạng Thái</th>
+                                    <th style="text-align: right;">Kết Quả VND</th>
+                                    <th style="text-align: right;">Số Dư Sau</th>
+                                </tr>
+                            </thead>
+                            <tbody id="demoBetsTable">
+                                <tr>
+                                    <td colspan="8" style="text-align: center; color: var(--text-muted);">Đang tải lịch sử cược giả lập...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Capital Collapse History Table -->
+                <div class="card" style="margin-top: 1.5rem; border-left: 4px solid var(--danger);">
+                    <div class="card-title">
+                        <span>Lịch Sử Gãy Quản Lý Vốn (Capital Collapse Logs)</span>
+                        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;">Đo lường các trường hợp chuỗi gãy vượt khả năng chịu đựng của tài khoản</span>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Thời Gian</th>
+                                    <th>Kỳ Quay</th>
+                                    <th>Hạng Mục</th>
+                                    <th style="text-align: right;">Chuỗi Thua Đạt</th>
+                                    <th style="text-align: right;">Cược Yêu Cầu</th>
+                                    <th style="text-align: right;">Số Dư Lúc Đó</th>
+                                    <th style="text-align: right;">Mức Cược Cơ Bản</th>
+                                    <th>Chiến Thuật</th>
+                                </tr>
+                            </thead>
+                            <tbody id="demoCollapsesTable">
+                                <tr>
+                                    <td colspan="8" style="text-align: center; color: var(--text-muted);">Chưa ghi nhận sự kiện gãy quản lý vốn nào.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
-            <!-- Weird Breaks -->
-            <div class="card">
-                <div class="card-title">Kỳ Gãy Lạ Gần Đây (Xác suất cược >= 68% nhưng thua)</div>
-                <div class="table-container" style="max-height: 250px; overflow-y: auto;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th style="width: 130px;">Kỳ Quay</th>
-                                <th style="width: 150px;">Thời Gian</th>
-                                <th>Chi Tiết Gãy Cầu</th>
-                            </tr>
-                        </thead>
-                        <tbody id="weirdBreaksTable">
-                            <tr>
-                                <td colspan="3" style="text-align: center; color: var(--text-muted);">Đang tải dữ liệu kỳ gãy lạ...</td>
-                            </tr>
-                        </tbody>
-                    </table>
+            <!-- TAB 3: CONNECTION & LOGS TAB -->
+            <div id="connectionTab" class="tab-panel">
+                <div class="grid-2" style="margin-bottom: 1.5rem;">
+                    <!-- Auto-Sync token settings -->
+                    <div class="card">
+                        <div class="card-title">Cấu Hình Kết Nối Game (API Sync)</div>
+                        <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.25rem; line-height: 1.4;">
+                            Hệ thống cần Token và Cookie từ game đang chạy để nhận dữ liệu socket thời gian thực. Nhập thủ công dưới đây hoặc dùng phương pháp đồng bộ tự động qua script bookmark.
+                        </p>
+                        
+                        <div class="form-group">
+                            <label>Token từ game (Wss Link Token):</label>
+                            <input type="text" id="tokenInput" placeholder="Dán token vào đây...">
+                        </div>
+                        <div class="form-group">
+                            <label>Cookie xác thực (Optional):</label>
+                            <input type="text" id="cookieInput" placeholder="Cookie đăng nhập (nếu cần)...">
+                        </div>
+                        <div class="form-group">
+                            <label>Cloudflare CF Auth Token (Optional):</label>
+                            <input type="text" id="cfAuthTokenInput" placeholder="Cloudflare authorization token...">
+                        </div>
+                        
+                        <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem; flex-wrap: wrap;">
+                            <button class="btn btn-secondary" onclick="triggerReconnect()" style="flex: 1; min-width: 140px;">Kết Nối Lại</button>
+                            <button class="btn btn-secondary" onclick="triggerGameReload()" style="flex: 1; min-width: 140px; background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.25); color: #a5b4fc;">Tải Lại Trang Game</button>
+                            <button class="btn" onclick="updateToken()" style="flex: 1.2; min-width: 160px;">Lưu Cấu Hình & Sync</button>
+                        </div>
+                    </div>
+
+                    <!-- Realtime Wallet Balance & Info Info -->
+                    <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div class="card-title">Thông Tin Tài Khoản Thật</div>
+                            <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+                                Số dư thật đồng bộ trực tiếp từ account game đang kết nối. Hệ thống chỉ đọc và cảnh báo chứ không thao tác trên ví thật.
+                            </p>
+                            
+                            <div style="padding: 1rem; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; margin-bottom: 1rem;">
+                                <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">Số dư tài khoản thực tế:</div>
+                                <div id="realBalanceVal" style="font-size: 2rem; font-weight: 700; color: var(--success); margin-top: 0.25rem;">0 VND</div>
+                            </div>
+                        </div>
+
+                        <div style="background: rgba(15, 23, 42, 0.4); border-radius: 8px; padding: 0.8rem; font-size: 0.8rem; border: 1px solid var(--border-card);">
+                            <div style="font-weight: 600; color: var(--primary); margin-bottom: 0.3rem;">Bảo mật thông tin:</div>
+                            <span style="color: var(--text-muted); line-height: 1.4; display: block;">
+                                Toàn bộ thông tin Token/Cookie được lưu trữ nội bộ của bạn, không gửi ra bất kỳ máy chủ nào khác ngoài máy chủ nhà cái.
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Socket System logs -->
+                <div class="card">
+                    <div class="card-title">
+                        <span>Nhật Ký Kết Nối Socket & Hệ Thống</span>
+                        <span id="socketHistoryGameLabel" style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;"></span>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width: 200px;">Thời Gian</th>
+                                    <th style="width: 140px;">Sự Kiện</th>
+                                    <th>Chi Tiết / Lý Do</th>
+                                </tr>
+                            </thead>
+                            <tbody id="socketLogsTable">
+                                <tr>
+                                    <td colspan="3" style="text-align: center; color: var(--text-muted);">Chưa có nhật ký kết nối.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
-        </div>
-        
-        <!-- Socket Connection Logs -->
-        <div class="card" style="margin-top: 1.5rem;">
-            <div class="card-title">Nhật Ký Kết Nối Socket & Hệ Thống <span style="font-size: 0.9rem; font-weight: normal; color: var(--text-muted); margin-left: 8px;" id="socketHistoryGameLabel"></span></div>
-            <div class="table-container" style="max-height: 250px; overflow-y: auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 200px;">Thời Gian</th>
-                            <th style="width: 140px;">Sự Kiện</th>
-                            <th>Chi Tiết / Lý Do</th>
-                        </tr>
-                    </thead>
-                    <tbody id="socketLogsTable">
-                        <tr>
-                            <td colspan="3" style="text-align: center; color: var(--text-muted);">Chưa có nhật ký kết nối.</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
+        </main>
     </div>
 
-    <script>
-        async function fetchRealtimeData() {
-            let data = null;
-            try {
-                // 1. Fetch statistics and AI Recommendations
-                const statsResponse = await fetch('/api/statistics?limit=500&t=' + Date.now());
-                const statsData = await statsResponse.json();
-                
-                if (statsData.status === 'success') {
-                    data = statsData.data;
-                    
-                    // Sync active game dropdown and header title
-                    const activeVal = `${statsData.lottery_id}_${statsData.lottery_code}`;
-                    const gameSelect = document.getElementById('gameSelect');
-                    if (gameSelect && gameSelect.value !== activeVal && !gameSelect.matches(':focus')) {
-                        gameSelect.value = activeVal;
-                    }
-                    const gameNames = {
-                        '47_mb45g': 'Miền Bắc 45 Giây',
-                        '48_mb75g': 'Miền Bắc 75 Giây',
-                        '45_pmb5p': 'Miền Bắc 5 Phút'
-                    };
-                    const activeName = gameNames[activeVal] || statsData.lottery_code;
-                    const gameTitleElem = document.getElementById('activeGameTitle');
-                    if (gameTitleElem) {
-                        gameTitleElem.innerText = `(${activeName})`;
-                    }
-                    const drawLabel = document.getElementById('drawHistoryGameLabel');
-                    if (drawLabel) {
-                        drawLabel.innerText = `(${activeName})`;
-                    }
-                    const predLabel = document.getElementById('predHistoryGameLabel');
-                    if (predLabel) {
-                        predLabel.innerText = `(${activeName})`;
-                    }
-                    const socketLabel = document.getElementById('socketHistoryGameLabel');
-                    if (socketLabel) {
-                        socketLabel.innerText = `(${activeName})`;
-                    }
-                    document.getElementById('totalRecordsAnalyzed').innerText = data.total_records || 0;
-                    
-                    // Update Parity Streak Details
-                    const leStreak = data.streaks.le_streak;
-                    document.getElementById('streakParityState').innerText = leStreak.state === 'Le' ? 'Lẻ' : 'Chẵn';
-                    document.getElementById('streakParityCount').innerText = leStreak.count;
-                    document.getElementById('streakParityMax').innerText = leStreak.max_history;
-                    
-                    // Update Size Streak Details
-                    const taiStreak = data.streaks.tai_streak;
-                    document.getElementById('streakSizeState').innerText = taiStreak.state === 'Tai' ? 'Tài' : 'Xỉu';
-                    document.getElementById('streakSizeCount').innerText = taiStreak.count;
-                    document.getElementById('streakSizeMax').innerText = taiStreak.max_history;
-                    
-                    // Update Next-Issue Probabilities
-                    const nextIssue = data.prediction_for_next_issue || {};
-                    const probLe = nextIssue.le_probability;
-                    const probChan = nextIssue.chan_probability;
-                    const probTai = nextIssue.tai_probability;
-                    const probXiu = nextIssue.xiu_probability;
-
-                    document.getElementById('probLeVal').innerText = typeof probLe === 'number' ? `${(probLe * 100).toFixed(1)}%` : '-%';
-                    document.getElementById('probChanVal').innerText = typeof probChan === 'number' ? `${(probChan * 100).toFixed(1)}%` : '-%';
-                    document.getElementById('probTaiVal').innerText = typeof probTai === 'number' ? `${(probTai * 100).toFixed(1)}%` : '-%';
-                    document.getElementById('probXiuVal').innerText = typeof probXiu === 'number' ? `${(probXiu * 100).toFixed(1)}%` : '-%';
-
-                    // Update AI Parity Recommendation
-                    const parityRec = data.ai_recommendation.parity;
-                    const pBox = document.getElementById('parityRecBox');
-                    const pDecision = document.getElementById('parityDecision');
-                    const pBadge = document.getElementById('parityDecisionBadge');
-                    const pConf = document.getElementById('parityConfidence');
-                    const pBar = document.getElementById('parityConfidenceBar');
-                    const pRationale = document.getElementById('parityRationale');
-                    
-                    pDecision.innerText = parityRec.decision;
-                    pConf.innerText = `Độ tin cậy: ${parityRec.confidence}%`;
-                    pBar.style.width = `${parityRec.confidence}%`;
-                    pRationale.innerText = parityRec.rationale;
-                    
-                    if (parityRec.decision !== 'BỎ QUA') {
-                        pBox.className = 'rec-box win-recommendation';
-                        pBadge.className = 'decision-badge decision-buy';
-                        pBadge.innerText = 'BUY';
-                    } else {
-                        pBox.className = 'rec-box';
-                        pBadge.className = 'decision-badge decision-nobet';
-                        pBadge.innerText = 'NO BET';
-                    }
-                    
-                    // Update AI Size Recommendation
-                    const sizeRec = data.ai_recommendation.size;
-                    const sBox = document.getElementById('sizeRecBox');
-                    const sDecision = document.getElementById('sizeDecision');
-                    const sBadge = document.getElementById('sizeDecisionBadge');
-                    const sConf = document.getElementById('sizeConfidence');
-                    const sBar = document.getElementById('sizeConfidenceBar');
-                    const sRationale = document.getElementById('sizeRationale');
-                    
-                    sDecision.innerText = sizeRec.decision;
-                    sConf.innerText = `Độ tin cậy: ${sizeRec.confidence}%`;
-                    sBar.style.width = `${sizeRec.confidence}%`;
-                    sRationale.innerText = sizeRec.rationale;
-                    
-                    if (sizeRec.decision !== 'BỎ QUA') {
-                        sBox.className = 'rec-box win-recommendation';
-                        sBadge.className = 'decision-badge decision-buy';
-                        sBadge.innerText = 'BUY';
-                    } else {
-                        sBox.className = 'rec-box';
-                        sBadge.className = 'decision-badge decision-nobet';
-                        sBadge.innerText = 'NO BET';
-                    }
-                }
-                
-                // 2. Fetch history of draws (15 records)
-                const historyResponse = await fetch('/api/history?limit=15&t=' + Date.now());
-                const historyData = await historyResponse.json();
-                
-                if (historyData.status === 'success') {
-                    const drawTableBody = document.getElementById('drawHistoryTable');
-                    drawTableBody.innerHTML = '';
-                    
-                    if (historyData.data.length === 0) {
-                        drawTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Không có dữ liệu xổ số trong bộ nhớ.</td></tr>`;
-                    } else {
-                        historyData.data.forEach(item => {
-                            const balls = item.numbers.map(num => `<span class="ball">${num}</span>`).join('');
-                            const parityLabel = item.is_le ? 'Lẻ' : 'Chẵn';
-                            const sizeLabel = item.is_tai ? 'Tài' : 'Xỉu';
-                            const timeStr = item.time ? item.time : '-';
-                            
-                            const tr = document.createElement('tr');
-                            tr.innerHTML = `
-                                <td style="font-weight: 600;">${item.issue}</td>
-                                <td style="color: var(--text-muted); font-size: 0.85rem;">${timeStr}</td>
-                                <td><div class="ball-container">${balls}</div></td>
-                                <td style="font-weight: 600;">${item.total}</td>
-                                <td style="color: ${item.is_tai ? '#f59e0b' : '#38bdf8'}">${sizeLabel}</td>
-                                <td style="color: ${item.is_le ? '#fb7185' : '#34d399'}">${parityLabel}</td>
-                            `;
-                            drawTableBody.appendChild(tr);
-                        });
-                    }
-                }
-                
-                // 3. Fetch prediction results and win rates
-                const predictionsResponse = await fetch('/api/predictions?limit=15&t=' + Date.now());
-                const predData = await predictionsResponse.json();
-                
-                    if (predData.status === 'success') {
-                    // Update AI Engine Badge
-                    const aiEngineBadge = document.getElementById('aiEngineBadge');
-                    if (aiEngineBadge && data && data.ai_recommendation) {
-                        const engine = data.ai_recommendation.engine || 'Heuristics (3-Layer)';
-                        aiEngineBadge.innerHTML = `<span class="badge-pulse" style="background-color: ${engine.includes('Gemini') ? '#34d399' : 'var(--primary)'};"></span>AI Engine: ${engine}`;
-                    }
-
-                    // Update Win Rates UI
-                    const stats = predData.stats;
-                    const overallWinRateEl = document.getElementById('overallWinRate');
-                    if (overallWinRateEl && stats && typeof stats.overall_win_rate === 'number') {
-                        overallWinRateEl.innerText = `${(stats.overall_win_rate * 100).toFixed(1)}%`;
-                    }
-                    
-                    document.getElementById('parityWinRate').innerText = `${(stats.parity.win_rate * 100).toFixed(1)}%`;
-                    document.getElementById('parityWinRatio').innerText = `${stats.parity.wins}/${stats.parity.total}`;
-                    
-                    document.getElementById('sizeWinRate').innerText = `${(stats.size.win_rate * 100).toFixed(1)}%`;
-                    document.getElementById('sizeWinRatio').innerText = `${stats.size.wins}/${stats.size.total}`;
-                    
-                    // Render prediction history table
-                    const predTableBody = document.getElementById('predictionHistoryTable');
-                    predTableBody.innerHTML = '';
-                    
-                    if (predData.data.length === 0) {
-                        predTableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">Chưa có lịch sử dự đoán cược nào.</td></tr>`;
-                    } else {
-                        predData.data.forEach(item => {
-                            const pState = item.predicted_parity === 'Le' ? 'Lẻ' : item.predicted_parity === 'Chan' ? 'Chẵn' : 'Không cược';
-                            const sState = item.predicted_size === 'Tai' ? 'Tài' : item.predicted_size === 'Xiu' ? 'Xỉu' : 'Không cược';
-                            const timeStr = item.time ? item.time : '-';
-                            const pConfStr = (item.predicted_parity !== 'Không có' && item.parity_confidence) ? `${item.parity_confidence}%` : '-';
-                            const sConfStr = (item.predicted_size !== 'Không có' && item.size_confidence) ? `${item.size_confidence}%` : '-';
-                            
-                            let actualResultStr = '-';
-                            if (item.actual_parity || item.actual_size) {
-                                const actP = item.actual_parity === 'Le' ? 'Lẻ' : 'Chẵn';
-                                const actS = item.actual_size === 'Tai' ? 'Tài' : 'Xỉu';
-                                actualResultStr = `${actS} / ${actP}`;
-                            }
-                            
-                            // Badges for Status
-                            let statusBadgeHtml = '';
-                            if (item.status_parity === 'pending' || item.status_size === 'pending') {
-                                statusBadgeHtml = `<span class="status-badge status-pending">Đang chờ</span>`;
-                            } else {
-                                const isParityWin = item.status_parity === 'win';
-                                const isSizeWin = item.status_size === 'win';
-                                
-                                if (item.status_parity === 'ignored' && item.status_size === 'ignored') {
-                                    statusBadgeHtml = `<span class="status-badge" style="background: rgba(255,255,255,0.05); color: var(--text-muted);">Bỏ qua</span>`;
-                                } else {
-                                    let winCount = 0;
-                                    let lossCount = 0;
-                                    if (item.status_parity === 'win') winCount++;
-                                    if (item.status_parity === 'lose') lossCount++;
-                                    if (item.status_size === 'win') winCount++;
-                                    if (item.status_size === 'lose') lossCount++;
-                                    
-                                    if (lossCount === 0) {
-                                        statusBadgeHtml = `<span class="status-badge status-win">THẮNG</span>`;
-                                    } else if (winCount === 0) {
-                                        statusBadgeHtml = `<span class="status-badge status-lose">THUA</span>`;
-                                    } else {
-                                        statusBadgeHtml = `<span class="status-badge status-win" style="background: rgba(99, 102, 241, 0.2); color: var(--primary);">HÒA (1W/1L)</span>`;
-                                    }
-                                }
-                            }
-                            
-                            const tr = document.createElement('tr');
-                            tr.innerHTML = `
-                                <td style="font-weight: 600;">${item.issue}</td>
-                                <td style="color: var(--text-muted); font-size: 0.85rem;">${timeStr}</td>
-                                <td style="color: ${item.predicted_parity !== 'Không có' ? '#a5b4fc' : 'var(--text-muted)'}">${pState}</td>
-                                <td style="font-weight: 500; color: var(--text-muted);">${pConfStr}</td>
-                                <td style="color: ${item.predicted_size !== 'Không có' ? '#a5b4fc' : 'var(--text-muted)'}">${sState}</td>
-                                <td style="font-weight: 500; color: var(--text-muted);">${sConfStr}</td>
-                                <td style="font-weight: 500;">${actualResultStr}</td>
-                                <td>${statusBadgeHtml}</td>
-                            `;
-                            predTableBody.appendChild(tr);
-                        });
-                    }
-                }
-                
-                // 4. Update Socket status and next issue headers
-                // Guess next issue by incrementing the newest issue in table
-                const drawHistoryTable = document.getElementById('drawHistoryTable');
-                if (drawHistoryTable.rows[0] && drawHistoryTable.rows[0].cells[0] && drawHistoryTable.rows[0].cells[0].innerText !== 'Đang tải dữ liệu xổ số...') {
-                    const latestIssue = drawHistoryTable.rows[0].cells[0].innerText;
-                    const nextIssueStr = incrementIssueCode(latestIssue);
-                    document.getElementById('parityNextIssue').innerText = `Kỳ tiếp theo: ${nextIssueStr}`;
-                    document.getElementById('sizeNextIssue').innerText = `Kỳ tiếp theo: ${nextIssueStr}`;
-                }
-                
-                // 5. Fetch socket history logs
-                const socketResponse = await fetch('/api/socket/history?limit=15&t=' + Date.now());
-                const socketData = await socketResponse.json();
-                if (socketData.status === 'success') {
-                    const logTableBody = document.getElementById('socketLogsTable');
-                    logTableBody.innerHTML = '';
-                    if (socketData.data.length === 0) {
-                        logTableBody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-muted);">Chưa có nhật ký kết nối.</td></tr>`;
-                    } else {
-                        socketData.data.forEach(item => {
-                            const date = new Date(item.timestamp * 1000);
-                            const timeStr = date.toLocaleTimeString() + ' ' + date.toLocaleDateString();
-                            
-                            let badgeBg = 'rgba(239, 68, 68, 0.15)';
-                            let badgeColor = '#ef4444';
-                            let eventName = item.event;
-                            if (item.event === 'connected') {
-                                badgeBg = 'rgba(52, 211, 153, 0.15)';
-                                badgeColor = '#34d399';
-                                eventName = 'KẾT NỐI';
-                            } else if (item.event === 'disconnected') {
-                                badgeBg = 'rgba(239, 68, 68, 0.15)';
-                                badgeColor = '#ef4444';
-                                eventName = 'MẤT KẾT NỐI';
-                            } else if (item.event === 'reconnecting') {
-                                badgeBg = 'rgba(245, 158, 11, 0.15)';
-                                badgeColor = '#f59e0b';
-                                eventName = 'THỬ LẠI';
-                            }
-                            
-                            const tr = document.createElement('tr');
-                            tr.innerHTML = `
-                                <td style="color: var(--text-muted); font-size: 0.9rem; white-space: nowrap;">${timeStr}</td>
-                                <td><span class="badge" style="background: ${badgeBg}; color: ${badgeColor}; padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 600; font-size: 0.75rem; border: none; display: inline-flex; align-items: center; justify-content: center; width: 110px; margin: 0;">${eventName}</span></td>
-                                <td style="font-weight: 500;">${item.message}</td>
-                            `;
-                            logTableBody.appendChild(tr);
-                        });
-                    }
-                }
-                
-                // 6. Fetch market analysis
-                const marketResponse = await fetch('/api/market-analysis?limit=100&t=' + Date.now());
-                const marketData = await marketResponse.json();
-                if (marketData.status === 'success' && marketData.data) {
-                    const analysis = marketData.data;
-                    
-                    // Update latest block info
-                    const latestBlockStatusEl = document.getElementById('latestBlockStatus');
-                    const latestBlockWinRateEl = document.getElementById('latestBlockWinRate');
-                    
-                    if (analysis.blocks_30 && analysis.blocks_30.length > 0) {
-                        const latestBlock = analysis.blocks_30[0];
-                        latestBlockStatusEl.innerText = latestBlock.status;
-                        latestBlockStatusEl.style.color = latestBlock.status === 'Ổn định' ? 'var(--success)' : latestBlock.status === 'Hỗn loạn' ? '#ef4444' : '#f59e0b';
-                        latestBlockWinRateEl.innerText = `${latestBlock.win_rate}%`;
-                    } else {
-                        latestBlockStatusEl.innerText = '-';
-                        latestBlockWinRateEl.innerText = '-';
-                    }
-                    
-                    // Render blocks table
-                    const marketTableBody = document.getElementById('marketBlocksTable');
-                    marketTableBody.innerHTML = '';
-                    if (!analysis.blocks_30 || analysis.blocks_30.length === 0) {
-                        marketTableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Chưa có đủ 30 kỳ để phân tích.</td></tr>`;
-                    } else {
-                        analysis.blocks_30.forEach(item => {
-                            const statusColor = item.status === 'Ổn định' ? 'var(--success)' : item.status === 'Hỗn loạn' ? '#ef4444' : '#f59e0b';
-                            const tr = document.createElement('tr');
-                            tr.innerHTML = `
-                                <td style="font-weight: 600; font-size: 0.85rem;">${item.block_range}</td>
-                                <td style="color: var(--text-muted); font-size: 0.8rem;">${item.time_range}</td>
-                                <td>${item.total_bets}</td>
-                                <td style="font-weight: 600;">${item.win_rate}%</td>
-                                <td><span style="color: ${statusColor}; font-weight: 600; font-size: 0.85rem;">${item.status}</span></td>
-                            `;
-                            marketTableBody.appendChild(tr);
-                        });
-                    }
-                    
-                    // Render weird breaks table
-                    const weirdTableBody = document.getElementById('weirdBreaksTable');
-                    weirdTableBody.innerHTML = '';
-                    if (!analysis.weird_breaks || analysis.weird_breaks.length === 0) {
-                        weirdTableBody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-muted);">Không phát hiện kỳ gãy lạ nào.</td></tr>`;
-                    } else {
-                        analysis.weird_breaks.forEach(item => {
-                            const tr = document.createElement('tr');
-                            tr.innerHTML = `
-                                <td style="font-weight: 600; font-size: 0.85rem;">${item.issue}</td>
-                                <td style="color: var(--text-muted); font-size: 0.8rem;">${item.time}</td>
-                                <td style="font-size: 0.85rem; color: #fb7185; font-weight: 500;">${item.details.join(' | ')}</td>
-                            `;
-                            weirdTableBody.appendChild(tr);
-                        });
-                    }
-                }
-                
-            } catch (err) {
-                console.error("Error polling statistics details:", err);
-            }
-        }
-        
-        function incrementIssueCode(lastIssue) {
-            if (!lastIssue) return '';
-            try {
-                return (BigInt(lastIssue) + 1n).toString();
-            } catch (err) {
-                return lastIssue;
-            }
-        }
-
-        async function updateToken() {
-            const token = document.getElementById('tokenInput').value.trim();
-            if (!token) {
-                alert("Vui lòng dán token hợp lệ.");
-                return;
-            }
-            try {
-                const response = await fetch('/api/config-token', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({token: token})
-                });
-                const res = await response.json();
-                if (res.status === 'success') {
-                    alert("Cập nhật Token và kết nối lại WebSocket thành công!");
-                    document.getElementById('tokenInput').value = '';
-                    fetchRealtimeData();
-                } else {
-                    alert("Lỗi: " + res.message);
-                }
-            } catch (e) {
-                alert("Không thể kết nối đến API: " + e);
-            }
-        }
-
-        async function triggerReconnect() {
-            try {
-                const response = await fetch('/api/reconnect', {method: 'POST'});
-                const res = await response.json();
-                alert(res.message);
-                fetchRealtimeData();
-            } catch (e) {
-                alert("Lỗi kết nối lại: " + e);
-            }
-        }
-
-        async function triggerFetch() {
-            try {
-                const response = await fetch('/api/trigger-fetch', {method: 'POST'});
-                const res = await response.json();
-                alert(res.message);
-                fetchRealtimeData();
-            } catch (e) {
-                alert("Lỗi đồng bộ: " + e);
-            }
-        }
-
-        async function clearData() {
-            if (!confirm("Bạn có chắc chắn muốn xóa toàn bộ lịch sử dữ liệu và dự đoán trong RAM/Redis không?")) return;
-            try {
-                const response = await fetch('/api/clear', {method: 'POST'});
-                const res = await response.json();
-                alert(res.message);
-                fetchRealtimeData();
-            } catch (e) {
-                alert("Lỗi xóa dữ liệu: " + e);
-            }
-        }
-        
-        async function updateSocketStatus() {
-            try {
-                // Fetch stats to get active WS state
-                const statsResponse = await fetch('/api/statistics');
-                const statsData = await statsResponse.json();
-                
-                const wsBadge = document.getElementById('wsStatusBadge');
-                if (statsData.status === 'success') {
-                    const wsState = statsData.ws_status || 'disconnected';
-                    if (wsState === 'connected') {
-                        wsBadge.className = 'badge status-online';
-                        wsBadge.innerText = 'Socket: Connected';
-                    } else if (wsState === 'connecting') {
-                        wsBadge.className = 'badge status-connecting';
-                        wsBadge.innerText = 'Socket: Connecting';
-                    } else {
-                        wsBadge.className = 'badge status-offline';
-                        wsBadge.innerText = 'Socket: Disconnected';
-                    }
-                }
-            } catch(e) {
-                document.getElementById('wsStatusBadge').className = 'badge status-offline';
-                document.getElementById('wsStatusBadge').innerText = 'Socket: Offline';
-            }
-        }
-
-        async function changeGame() {
-            const gameVal = document.getElementById('gameSelect').value;
-            const [id, code] = gameVal.split('_');
-            try {
-                const response = await fetch('/api/config-lottery', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({lottery_id: parseInt(id), lottery_code: code})
-                });
-                const res = await response.json();
-                if (res.status === 'success') {
-                    alert(`Đã chuyển đổi thành công sang game mới! Hệ thống đang tải lại dữ liệu...`);
-                    fetchRealtimeData();
-                } else {
-                    alert("Lỗi: " + res.message);
-                }
-            } catch (e) {
-                alert("Lỗi kết nối API: " + e);
-            }
-        }
-
-        // Init and start loops
-        fetchRealtimeData();
-        updateSocketStatus();
-        setInterval(fetchRealtimeData, 3000); // Poll recommendations & data every 3 seconds
-        setInterval(updateSocketStatus, 5000); // Check socket status every 5 seconds
-    </script>
-    <!-- Modal Hướng dẫn Tự động hóa -->
+    <!-- MODAL HUONG DAN TU DONG HOA (POPUP AUTOMATION HELP) -->
     <div id="automationModal" class="modal">
         <div class="card" style="max-width: 650px; width: 90%; max-height: 85vh; overflow-y: auto; position: relative; padding: 2rem; border: 1px solid var(--primary);">
             <span onclick="closeAutomationModal()" style="position: absolute; right: 1.5rem; top: 1.5rem; font-size: 1.5rem; cursor: pointer; color: var(--text-muted);">&times;</span>
             <h3 style="margin-top: 0; margin-bottom: 1rem; color: #a5b4fc;">Hướng Dẫn Tự Động Hóa Auto-Sync Token</h3>
             
             <div style="border-bottom: 1px solid var(--border-card); margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap;">
-                <button id="btnTabConsole" onclick="switchModalTab('console')" style="background: none; border: none; padding: 0.5rem 1rem; color: var(--primary); font-weight: 600; border-bottom: 2px solid var(--primary); cursor: pointer;">Cách 1: F12 Console (Đơn giản, 100% hoạt động)</button>
+                <button id="btnTabConsole" onclick="switchModalTab('console')" style="background: none; border: none; padding: 0.5rem 1rem; color: var(--primary); font-weight: 600; border-bottom: 2px solid var(--primary); cursor: pointer;">Cách 1: F12 Console (Đơn giản, hoạt động ngay)</button>
                 <button id="btnTabBookmarklet" onclick="switchModalTab('bookmarklet')" style="background: none; border: none; padding: 0.5rem 1rem; color: var(--text-muted); font-weight: 600; cursor: pointer;">Cách 2: Bookmarklet (1 Click)</button>
                 <button id="btnTabTampermonkey" onclick="switchModalTab('tampermonkey')" style="background: none; border: none; padding: 0.5rem 1rem; color: var(--text-muted); font-weight: 600; cursor: pointer;">Cách 3: Tampermonkey Script</button>
             </div>
 
             <!-- Tab Console -->
             <div id="tabContentConsole">
-                <p style="font-size: 0.95rem; line-height: 1.5;">Phương pháp này chạy trực tiếp lệnh chặn trong Console F12 của trang game. <strong>Chắc chắn thành công, không bị lỗi bảo mật của trình duyệt chặn</strong>:</p>
+                <p style="font-size: 0.95rem; line-height: 1.5;">Phương pháp này chạy trực tiếp lệnh chặn trong Console F12 của trang game. <strong>Chắc chắn thành công, không lo bị security chặn</strong>:</p>
                 <ol style="font-size: 0.9rem; line-height: 1.6; padding-left: 1.2rem; margin-bottom: 1.5rem; color: var(--text-main);">
                     <li>Mở trang game EE88, nhấn phím <strong>F12</strong> và chọn thẻ <strong>Console</strong>.</li>
                     <li>Copy toàn bộ mã bên dưới, dán vào ô nhập lệnh ở Console và nhấn <strong>Enter</strong>.</li>
-                    <li>Bấm click chuyển đổi trò chơi trên Menu của game (ví dụ: đổi từ 75s sang 45s, hoặc ngược lại). Lệnh sẽ tự động bắt lấy token mới khi game mở lại kết nối, báo <em>"Đồng bộ Token thành công!"</em> và bot sẽ tự chạy!</li>
+                    <li>Bấm click chuyển đổi trò chơi trên Menu của game (ví dụ: đổi từ 75s sang 45s, hoặc ngược lại). Lệnh sẽ tự động bắt lấy token mới khi game mở lại kết nối.</li>
                 </ol>
                 
                 <div class="form-group">
@@ -1277,13 +579,12 @@
 
             <!-- Tab Bookmarklet -->
             <div id="tabContentBookmarklet" style="display: none;">
-                <p style="font-size: 0.95rem; line-height: 1.5;">Phương pháp này sử dụng Bookmark (Trình đánh dấu) của trình duyệt. <strong>Cực kỳ nhanh, không cần cài extension, hoạt động 100% trên tất cả trình duyệt</strong>:</p>
+                <p style="font-size: 0.95rem; line-height: 1.5;">Phương pháp này sử dụng Bookmark (Trình đánh dấu) của trình duyệt. <strong>Cực kỳ nhanh, không cần cài extension, hoạt động trên mọi trình duyệt</strong>:</p>
                 <ol style="font-size: 0.9rem; line-height: 1.6; padding-left: 1.2rem; margin-bottom: 1.5rem; color: var(--text-main);">
                     <li>Nhấn <strong>Ctrl + Shift + B</strong> để hiện thanh Bookmark trình duyệt lên (nếu chưa hiện).</li>
                     <li>Chuột phải vào thanh Bookmark -> Chọn <strong>Thêm trang (Add page)</strong>.</li>
-                    <li>Đặt tên là <strong>Đồng bộ Token</strong>.</li>
-                    <li>Copy toàn bộ mã bên dưới và dán vào ô <strong>URL / Địa chỉ</strong> của Bookmark đó rồi lưu lại.</li>
-                    <li>Mở trang game EE88, sau đó click vào Bookmark <strong>Đồng bộ Token</strong> trên thanh công cụ của bạn. Hệ thống sẽ báo <em>"Đồng bộ Token thành công!"</em> và tự kết nối!</li>
+                    <li>Chuột trái vào ô URL và dán toàn bộ bookmarklet mã bên dưới. Lưu.</li>
+                    <li>Mở game và click bookmark đó, sau đó chuyển game để kích hoạt sync.</li>
                 </ol>
                 
                 <div class="form-group">
@@ -1298,161 +599,27 @@
 
             <!-- Tab Tampermonkey -->
             <div id="tabContentTampermonkey" style="display: none;">
-                <p style="font-size: 0.95rem; line-height: 1.5;">Phương pháp này tự động bắt sự kiện kết nối WebSocket từ trang game:</p>
+                <p style="font-size: 0.95rem; line-height: 1.5;">Nếu muốn tự động hóa hoàn toàn không cần click mỗi lần vào game, hay cài extension <strong>Tampermonkey</strong> và add script sau:</p>
                 <ol style="font-size: 0.9rem; line-height: 1.6; padding-left: 1.2rem; margin-bottom: 1.5rem; color: var(--text-main);">
-                    <li>Cài đặt tiện ích mở rộng <strong>Tampermonkey</strong> trên Edge/Chrome.</li>
-                    <li>Đảm bảo đã bật <strong>Chế độ nhà phát triển (Developer Mode)</strong> trong edge://extensions hoặc chrome://extensions và bật <strong>Allow User Scripts</strong> ở chi tiết cài đặt extension Tampermonkey.</li>
-                    <li>Tạo một script mới trong Tampermonkey, copy mã dưới đây và bấm Lưu (Ctrl+S). Reload trang game EE88 để tự kết nối.</li>
+                    <li>Cài đặt extension Tampermonkey trên Cửa hàng Chrome/Firefox.</li>
+                    <li>Click icon Tampermonkey -> Chọn <strong>Create new script (Tạo script mới)</strong>.</li>
+                    <li>Xóa hết code mặc định và copy toàn bộ script dưới đây dán vào. Ấn <strong>Ctrl + S</strong> để lưu.</li>
+                    <li>Truy cập trang game, nó sẽ tự động đồng bộ token về Dashboard mỗi khi game chạy lại.</li>
                 </ol>
+                
                 <div class="form-group">
                     <label style="color: var(--primary); font-weight: 600;">Mã Script Tampermonkey:</label>
-                    <textarea id="tampermonkeyCode" readonly style="width: 100%; height: 150px; background: rgba(15, 23, 42, 0.9); color: #34d399; font-family: monospace; font-size: 0.8rem; padding: 0.8rem; border-radius: 4px; border: 1px solid var(--border-card); resize: none;"></textarea>
+                    <textarea id="tampermonkeyCode" readonly style="width: 100%; height: 180px; background: rgba(15, 23, 42, 0.9); color: #34d399; font-family: monospace; font-size: 0.8rem; padding: 0.8rem; border-radius: 4px; border: 1px solid var(--border-card); resize: none;"></textarea>
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1.5rem;">
-                    <button class="btn btn-secondary" onclick="copyTampermonkeyScript()">Copy Mã Script</button>
+                    <button class="btn btn-secondary" onclick="copyTampermonkeyCode()">Copy Script</button>
                     <button class="btn" onclick="closeAutomationModal()">Đóng</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <script>
-        function switchModalTab(tabName) {
-            const btnC = document.getElementById('btnTabConsole');
-            const btnB = document.getElementById('btnTabBookmarklet');
-            const btnT = document.getElementById('btnTabTampermonkey');
-            const contentC = document.getElementById('tabContentConsole');
-            const contentB = document.getElementById('tabContentBookmarklet');
-            const contentT = document.getElementById('tabContentTampermonkey');
-            
-            btnC.style.borderBottom = 'none'; btnC.style.color = 'var(--text-muted)';
-            btnB.style.borderBottom = 'none'; btnB.style.color = 'var(--text-muted)';
-            btnT.style.borderBottom = 'none'; btnT.style.color = 'var(--text-muted)';
-            contentC.style.display = 'none';
-            contentB.style.display = 'none';
-            contentT.style.display = 'none';
-            
-            if (tabName === 'console') {
-                btnC.style.borderBottom = '2px solid var(--primary)';
-                btnC.style.color = 'var(--primary)';
-                contentC.style.display = 'block';
-            } else if (tabName === 'bookmarklet') {
-                btnB.style.borderBottom = '2px solid var(--primary)';
-                btnB.style.color = 'var(--primary)';
-                contentB.style.display = 'block';
-            } else {
-                btnT.style.borderBottom = '2px solid var(--primary)';
-                btnT.style.color = 'var(--primary)';
-                contentT.style.display = 'block';
-            }
-        }
-
-        function showAutomationModal() {
-            const scriptCode = `// ==UserScript==
-// @name         EE88 Token Auto-Sync
-// @namespace    http://tampermonkey.net/
-// @version      0.1
-// @description  Tu dong dong bo hoa token EE88 voi local Dashboard
-// @match        *://*.ee8833.me/*
-// @grant        none
-// @run-at       document-start
-// ==/UserScript==
-
-(function() {
-    'use strict';
-
-    const OriginalWebSocket = window.WebSocket;
-    window.WebSocket = function(url, protocols) {
-        if (url.includes("token=")) {
-            try {
-                const token = url.split("token=")[1].split("&")[0];
-                fetch('http://127.0.0.1:8000/api/config-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: token })
-                })
-                .then(r => r.json())
-                .then(d => {
-                    console.log("Successfully synced token with local bot!", d);
-                })
-                .catch(err => {
-                    console.error("Failed to sync token with local bot:", err);
-                });
-            } catch (e) {
-                console.error("Error extracting token:", e);
-            }
-        }
-        return new OriginalWebSocket(url, protocols);
-    };
-})();`;
-            const bookmarkletCode = `javascript:(function(){const r=/\\b\\d+_\\d+_\\d+_[a-f0-9]{15,60}\\b/i;function f(v){if(!v)return null;if(typeof v==='string'){const m=v.match(r);if(m)return m[0];try{return f(JSON.parse(v));}catch(e){}}else if(typeof v==='object'){for(let k in v){try{const res=f(v[k]);if(res)return res;}catch(e){}}}return null;}let t=null;for(let i=0;i<localStorage.length;i++){t=f(localStorage.getItem(localStorage.key(i)));if(t)break;}if(!t){for(let i=0;i<sessionStorage.length;i++){t=f(sessionStorage.getItem(sessionStorage.key(i)));if(t)break;}}if(!t){t=f(document.cookie);}if(t){fetch('http://127.0.0.1:8000/api/config-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})}).then(r=>r.json()).then(d=>alert("Đồng bộ Token thành công!")).catch(e=>alert("Lỗi gửi Token: "+e));}else{alert("Không tìm thấy Token. Hãy đăng nhập lại hoặc reload trang.");}})();`;
-            const consoleCode = `(function() {
-    console.log("=== EE88 Token Sync Interceptor Active ===");
-    const OriginalWebSocket = window.WebSocket;
-    window.WebSocket = function(url, protocols) {
-        console.log("Intercepted WebSocket URL:", url);
-        if (url.includes("token=")) {
-            try {
-                const token = url.split("token=")[1].split("&")[0];
-                console.log("Extracted Token:", token);
-                fetch('http://127.0.0.1:8000/api/config-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: token })
-                })
-                .then(r => r.json())
-                .then(d => {
-                    console.log("Successfully synced token with local bot!", d);
-                    alert("Đồng bộ Token thành công!");
-                })
-                .catch(err => {
-                    console.error("Failed to send token to bot:", err);
-                    alert("Lỗi gửi Token về Bot: " + err);
-                });
-            } catch (e) {
-                console.error("Error parsing token:", e);
-            }
-        }
-        return new OriginalWebSocket(url, protocols);
-    };
-    console.log("Hãy click chuyển game trên Menu (hoặc nhấn F5) để kích hoạt tự động đồng bộ!");
-})();`;
-
-            document.getElementById('tampermonkeyCode').value = scriptCode;
-            document.getElementById('bookmarkletCode').value = bookmarkletCode;
-            document.getElementById('consoleCode').value = consoleCode;
-            
-            switchModalTab('console');
-            document.getElementById('automationModal').style.display = 'flex';
-        }
-        
-        function closeAutomationModal() {
-            document.getElementById('automationModal').style.display = 'none';
-        }
-        
-        function copyTampermonkeyScript() {
-            const copyText = document.getElementById("tampermonkeyCode");
-            copyText.select();
-            copyText.setSelectionRange(0, 99999);
-            navigator.clipboard.writeText(copyText.value);
-            alert("Đã copy mã script Tampermonkey vào Clipboard!");
-        }
-
-        function copyBookmarkletCode() {
-            const copyText = document.getElementById("bookmarkletCode");
-            copyText.select();
-            copyText.setSelectionRange(0, 99999);
-            navigator.clipboard.writeText(copyText.value);
-            alert("Đã copy mã Bookmarklet vào Clipboard!");
-        }
-
-        function copyConsoleCode() {
-            const copyText = document.getElementById("consoleCode");
-            copyText.select();
-            copyText.setSelectionRange(0, 99999);
-            navigator.clipboard.writeText(copyText.value);
-            alert("Đã copy mã chạy F12 Console vào Clipboard!");
-        }
-    </script>
+    <!-- Script assets inclusion -->
+    <script src="/app.js"></script>
 </body>
 </html>

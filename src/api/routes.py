@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Query, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
+import io
+import csv
 from src.database.store import store
 from src.core.analyzer import ProbabilityAnalyzer
 from src.core.scraper import scraper
@@ -132,6 +135,8 @@ async def config_url(payload: ConfigUrlRequest):
 
 class ConfigTokenRequest(BaseModel):
     token: str = Field(..., description="Token dang nhap moi cua he thong game")
+    cf_auth_token: Optional[str] = Field(None, description="cf-auth-token dung cho HTTP requests")
+    cookie: Optional[str] = Field(None, description="Cookie cua trinh duyet dung cho HTTP requests")
 
 def update_env_ws_url(ws_url: str):
     import os
@@ -166,13 +171,17 @@ async def config_token(payload: ConfigTokenRequest):
             pass
     token = token.strip()
     
-    new_url = f"wss://vip.ee8833.me/ws/?token={token}&x-device=pc"
+    new_url = f"wss://{config.TARGET_DOMAIN}/ws/?token={token}&x-device=pc"
     await scraper.update_url(new_url)
     
     try:
         update_env_ws_url(new_url)
     except Exception as e:
         pass
+        
+    # Luu HTTP headers va cookie neu co de dung cho fetch_user_balance
+    if payload.cf_auth_token:
+        store.update_http_headers(payload.cf_auth_token, payload.cookie)
         
     return {
         "status": "success",
@@ -423,3 +432,283 @@ async def get_market_analysis(limit: int = Query(default=100, ge=30, le=1000)):
             "golden_hours": golden_hours
         }
     }
+
+
+@router.get("/export/history")
+async def export_history():
+    history = store.get_history(limit=10000)
+    
+    def generate():
+        # UTF-8 BOM for Excel
+        yield b'\xef\xbb\xbf'
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["Kỳ (Issue)", "Thời gian", "Số kết quả", "Tổng điểm", "Tài / Xỉu", "Chẵn / Lẻ"])
+        
+        for r in history:
+            numbers_str = " ".join(map(str, r.get("numbers") or []))
+            writer.writerow([
+                r.get("issue", ""),
+                r.get("time", ""),
+                numbers_str,
+                r.get("total", ""),
+                "Tài" if r.get("is_tai") else "Xỉu",
+                "Lẻ" if r.get("is_le") else "Chẵn"
+            ])
+            yield output.getvalue().encode('utf-8')
+            output.seek(0)
+            output.truncate(0)
+            
+    return StreamingResponse(
+        generate(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=lich_su_quay_so.csv"}
+    )
+
+
+@router.get("/export/predictions")
+async def export_predictions():
+    predictions = store.get_prediction_history(limit=10000)
+    
+    def generate():
+        yield b'\xef\xbb\xbf'
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "Thời gian",
+            "Kỳ cược",
+            "Dự đoán Chẵn/Lẻ",
+            "% Parity",
+            "Dự đoán Tài/Xỉu",
+            "% Size",
+            "Kết quả thật",
+            "Trạng thái"
+        ])
+        
+        for p in predictions:
+            # Format Parity predict to Vietnamese
+            raw_parity = p.get("predicted_parity", "Không có")
+            parity_pred = "Lẻ" if raw_parity == "Le" else "Chẵn" if raw_parity == "Chan" else "Bỏ qua"
+            parity_conf = f"{p.get('parity_confidence')}%" if (raw_parity != "Không có" and p.get('parity_confidence')) else "-"
+            
+            # Format Size predict to Vietnamese
+            raw_size = p.get("predicted_size", "Không có")
+            size_pred = "Tài" if raw_size == "Tai" else "Xỉu" if raw_size == "Xiu" else "Bỏ qua"
+            size_conf = f"{p.get('size_confidence')}%" if (raw_size != "Không có" and p.get('size_confidence')) else "-"
+            
+            # Real result
+            real_parity = p.get("actual_parity", "")
+            real_size = p.get("actual_size", "")
+            if real_parity or real_size:
+                act_p = "Lẻ" if real_parity == "Le" else "Chẵn"
+                act_s = "Tài" if real_size == "Tai" else "Xỉu"
+                real_result = f"{act_s} / {act_p}"
+            else:
+                real_result = "-"
+            
+            # Resolve status exactly like UI
+            status_parity = p.get("status_parity", "ignored")
+            status_size = p.get("status_size", "ignored")
+            
+            if status_parity == "pending" or status_size == "pending":
+                status_txt = "Đang chờ"
+            elif status_parity == "ignored" and status_size == "ignored":
+                status_txt = "Bỏ qua"
+            else:
+                win_count = 0
+                loss_count = 0
+                if status_parity == "win":
+                    win_count += 1
+                elif status_parity == "lose":
+                    loss_count += 1
+                if status_size == "win":
+                    win_count += 1
+                elif status_size == "lose":
+                    loss_count += 1
+                
+                if loss_count == 0:
+                    status_txt = "THẮNG"
+                elif win_count == 0:
+                    status_txt = "THUA"
+                else:
+                    status_txt = "HÒA (1W/1L)"
+                
+            writer.writerow([
+                p.get("time", ""),
+                p.get("issue", ""),
+                parity_pred,
+                parity_conf,
+                size_pred,
+                size_conf,
+                real_result,
+                status_txt
+            ])
+            yield output.getvalue().encode('utf-8')
+            output.seek(0)
+            output.truncate(0)
+            
+    return StreamingResponse(
+        generate(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=lich_su_du_doan.csv"}
+    )
+
+
+class DemoConfigUpdate(BaseModel):
+    amount: Optional[float] = Field(None, ge=0.0, description="Muc tien dat cuoc moi lenh gia lap")
+    strategy: Optional[str] = Field(None, description="Chien thuat dat cuoc (fixed, martingale_x3, fixed_fractional_3, kelly_third, kelly_half_stoploss)")
+    demo_balance: Optional[float] = Field(None, ge=0.0, description="Tu dat so du gia lap moi")
+
+@router.get("/balance")
+async def get_balance_info():
+    from src.core.money_management import MoneyManager, get_effective_win_rate, STRATEGY_LABELS
+    balances = store.get_balances()
+    bets = store.get_demo_bets(limit=50)
+
+    demo_balance = balances.get("demo_balance", 0.0)
+    base_bet = balances.get("demo_bet_amount", 100000.0)
+    strategy = balances.get("demo_bet_strategy", "fixed")
+
+    loss_streaks = store.get_loss_streaks()
+    p_streak = loss_streaks.get("parity", 0)
+    s_streak = loss_streaks.get("size", 0)
+
+    daily_info = store.get_daily_loss_info()
+    p_daily = daily_info.get("parity_daily_loss_count", 0)
+    s_daily = daily_info.get("size_daily_loss_count", 0)
+    p_pause = daily_info.get("parity_pause_until", None)
+    s_pause = daily_info.get("size_pause_until", None)
+
+    # Win rate thuc te tu lich su
+    prediction_stats = store.get_prediction_stats()
+    p_win_rate = get_effective_win_rate(prediction_stats, "parity")
+    s_win_rate = get_effective_win_rate(prediction_stats, "size")
+
+    # Tinh next bet dung MoneyManager
+    p_bet = MoneyManager.calculate_bet(
+        strategy=strategy, base_amount=base_bet, current_balance=demo_balance,
+        loss_streak=p_streak, daily_loss_count=p_daily, pause_until=p_pause, win_rate=p_win_rate
+    )
+    s_bet = MoneyManager.calculate_bet(
+        strategy=strategy, base_amount=base_bet, current_balance=demo_balance,
+        loss_streak=s_streak, daily_loss_count=s_daily, pause_until=s_pause, win_rate=s_win_rate
+    )
+
+    max_streak = MoneyManager.get_max_streak_tolerated(strategy, demo_balance, base_bet, s_win_rate)
+
+    is_bankrupt = demo_balance <= 0 or (p_bet <= 0 and s_bet <= 0 and strategy not in ("kelly_half_stoploss",))
+    if strategy not in ("kelly_half_stoploss",):
+        is_bankrupt = is_bankrupt or (p_bet > demo_balance and s_bet > demo_balance)
+
+    collapses = store.get_capital_collapses(limit=50)
+
+    # Risk info panel day du
+    risk_info_parity = MoneyManager.get_risk_info(
+        strategy=strategy, current_balance=demo_balance, base_amount=base_bet,
+        win_rate=p_win_rate, loss_streak=p_streak, daily_loss_count=p_daily, pause_until=p_pause
+    )
+    risk_info_size = MoneyManager.get_risk_info(
+        strategy=strategy, current_balance=demo_balance, base_amount=base_bet,
+        win_rate=s_win_rate, loss_streak=s_streak, daily_loss_count=s_daily, pause_until=s_pause
+    )
+
+    return {
+        "status": "success",
+        "balances": balances,
+        "max_loss_streak_tolerated": max_streak,
+        "is_bankrupt": is_bankrupt,
+        "next_bet_amounts": {
+            "parity": p_bet,
+            "size": s_bet,
+            "parity_streak": p_streak,
+            "size_streak": s_streak
+        },
+        "risk_info": {
+            "parity": risk_info_parity,
+            "size": risk_info_size,
+        },
+        "strategy_labels": STRATEGY_LABELS,
+        "demo_bets": bets,
+        "capital_collapses": collapses
+    }
+
+@router.post("/balance/reset")
+async def reset_demo_balance():
+    success = store.reset_demo_balance()
+    return {
+        "status": "success" if success else "error",
+        "message": "Đã reset số dư giả lập về 10,000,000 VND và xóa lịch sử cược ảo."
+    }
+
+@router.post("/balance/clear-bets")
+async def clear_demo_bets_endpoint():
+    # 1. Clear predictions and draw records
+    store.clear()
+    
+    # 2. Clear simulated bet logs & reset loss streaks (keeping demo balance)
+    success = store.clear_demo_bets()
+    
+    # 3. Reload latest draw records from the scraper (async bootstrap/fetch)
+    from src.core.scraper import scraper
+    import asyncio
+    asyncio.create_task(scraper.fetch_latest_info())
+    
+    return {
+        "status": "success" if success else "error",
+        "message": "Đã xóa sạch toàn bộ kỳ quay, lịch sử dự đoán, cược giả lập và đang tải về dữ liệu mới nhất."
+    }
+
+@router.post("/balance/config")
+async def update_demo_config(config_data: DemoConfigUpdate):
+    from src.core.money_management import MoneyManager, get_effective_win_rate, ALL_STRATEGIES
+    success = True
+
+    if config_data.amount is not None:
+        success = success and store.set_demo_bet_amount(config_data.amount)
+    if config_data.strategy is not None:
+        if config_data.strategy not in ALL_STRATEGIES:
+            return {
+                "status": "error",
+                "message": f"Strategy khong hop le. Cac gia tri cho phep: {ALL_STRATEGIES}",
+                "recommended_bet": None
+            }
+        success = success and store.set_demo_bet_strategy(config_data.strategy)
+    if config_data.demo_balance is not None:
+        success = success and store.update_demo_balance(config_data.demo_balance)
+
+    # Lay trang thai hien tai de tinh recommended_bet
+    balances = store.get_balances()
+    current_balance = balances.get("demo_balance", 0.0)
+    current_strategy = balances.get("demo_bet_strategy", "fixed")
+    prediction_stats = store.get_prediction_stats()
+    win_rate = get_effective_win_rate(prediction_stats, "size")
+
+    recommended_bet = MoneyManager.get_recommended_base(
+        strategy=current_strategy,
+        balance=current_balance,
+        win_rate=win_rate,
+    ) if current_balance > 0 else None
+
+    return {
+        "status": "success" if success else "error",
+        "message": "Da cap nhat cau hinh tai chinh gia lap thanh cong.",
+        "recommended_bet": recommended_bet
+    }
+
+@router.post("/script/reload")
+async def trigger_script_reload():
+    store.set_script_command("reload")
+    return {
+        "status": "success",
+        "message": "Đã gửi lệnh yêu cầu tải lại trang game. Tampermonkey sẽ thực hiện tải lại sau tối đa 2 giây."
+    }
+
+@router.get("/script/command")
+async def get_script_command():
+    cmd = store.get_script_command()
+    return {
+        "command": cmd
+    }
+

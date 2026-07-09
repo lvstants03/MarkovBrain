@@ -172,4 +172,178 @@ def test_analyzer_gemini_fallback():
     finally:
         config.GEMINI_API_KEY = original_key
 
+def test_martingale_and_custom_balance():
+    store = DataStore()
+    store.clear()
+    
+    # Test setting custom demo balance and strategy
+    store.update_demo_balance(500000.0)
+    store.set_demo_bet_strategy("martingale_x3")
+    store.set_demo_bet_amount(10000.0)
+    
+    balances = store.get_balances()
+    assert balances["demo_balance"] == 500000.0
+    assert balances["demo_bet_strategy"] == "martingale_x3"
+    assert balances["demo_bet_amount"] == 10000.0
+    
+    # Verify initial loss streaks are 0
+    loss_streaks = store.get_loss_streaks()
+    assert loss_streaks["parity"] == 0
+    assert loss_streaks["size"] == 0
+    
+    # Place first bet (should use base amount 10,000)
+    store.place_demo_bet("20260701001", "parity", "MUA LẺ", 10000.0)
+    
+    # After placing bet, balance should decrease by 10,000
+    balances = store.get_balances()
+    assert balances["demo_balance"] == 490000.0
+    
+    # Resolve bet as a loss (numbers sum to even: sum = 20)
+    # This should increase loss streak for parity to 1
+    store.resolve_demo_bets("20260701001", [4, 4, 4, 4, 4])
+    
+    loss_streaks = store.get_loss_streaks()
+    assert loss_streaks["parity"] == 1
+    
+    # Place second bet (should use 10,000 * 3^1 = 30,000)
+    store.place_demo_bet("20260701002", "parity", "MUA LẺ", 10000.0)
+    
+    balances = store.get_balances()
+    assert balances["demo_balance"] == 460000.0 # 490,000 - 30,000
+    
+    # Resolve bet as a win (numbers sum to odd: sum = 25)
+    # This should reset loss streak for parity to 0
+    store.resolve_demo_bets("20260701002", [5, 5, 5, 5, 5])
+    
+    loss_streaks = store.get_loss_streaks()
+    assert loss_streaks["parity"] == 0
+    
+    # Win payout: 30,000 * 1.95 = 58,500
+    # New balance should be 460,000 + 58,500 = 518,500
+    balances = store.get_balances()
+    assert balances["demo_balance"] == 518500.0
+
+
+def test_clear_demo_bets():
+    store = DataStore()
+    store.use_redis = False
+    
+    # Setup some state
+    store.update_demo_balance(500000.0)
+    store.place_demo_bet("20260701001", "parity", "MUA LẺ", 10000.0)
+    store.resolve_demo_bets("20260701001", [4, 4, 4, 4, 4]) # Loss -> streak = 1
+    
+    assert len(store.get_demo_bets()) > 0
+    assert store.get_loss_streaks()["parity"] == 1
+    assert store.get_balances()["demo_balance"] == 490000.0
+    
+    # Clear bets
+    store.clear_demo_bets()
+    
+    # Bets should be cleared, streaks reset, but balance KEPT
+    assert len(store.get_demo_bets()) == 0
+    assert store.get_loss_streaks()["parity"] == 0
+    assert store.get_balances()["demo_balance"] == 490000.0
+
+
+def test_capital_collapse_logging():
+    store = DataStore()
+    store.clear()
+    store.clear_capital_collapses()
+
+    # Set custom demo balance and strategy to trigger overdraft
+    store.update_demo_balance(10000.0)
+    store.set_demo_bet_strategy("fixed")
+    store.set_demo_bet_amount(50000.0)
+
+    # Place bet should return "insufficient_balance" and trigger collapse log
+    res = store.place_demo_bet("20260701001", "parity", "MUA LẺ", 50000.0)
+    assert res == "insufficient_balance"
+
+    # Verify collapse logged
+    collapses = store.get_capital_collapses()
+    assert len(collapses) == 1
+    assert collapses[0]["issue"] == "20260701001"
+    assert collapses[0]["amount_required"] == 50000.0
+    assert collapses[0]["balance_current"] == 10000.0
+
+    # Clear collapses
+    store.clear_capital_collapses()
+    assert len(store.get_capital_collapses()) == 0
+
+
+def test_drawdown_pause_protection():
+    store = DataStore()
+    store.use_redis = False
+    
+    # 1. Reset/Set balance to 1,000,000. Peak should become 1,000,000.
+    store.update_demo_balance(1000000.0)
+    store.set_demo_bet_amount(300000.0)
+    balances = store.get_balances()
+    assert balances["demo_balance"] == 1000000.0
+    assert balances["peak_demo_balance"] == 1000000.0
+    
+    # 2. Place a bet of 300,000 (which is 30% of capital)
+    store.place_demo_bet("20260701001", "parity", "MUA LẺ", 300000.0)
+    
+    # 3. Resolve the bet as a loss (numbers sum to even: sum = 20)
+    store.resolve_demo_bets("20260701001", [4, 4, 4, 4, 4])
+    
+    # Balance resolved is 700,000. Drawdown = 30% (>= 25%).
+    # This should trigger the pause.
+    daily_info = store.get_daily_loss_info()
+    assert daily_info["parity_pause_until"] is not None
+    assert daily_info["size_pause_until"] is not None
+    import time
+    assert daily_info["parity_pause_until"] - time.time() > 500  # should be around 600s
+    assert daily_info["parity_pause_until"] - time.time() <= 600
+    
+    # Peak balance should still be 1,000,000 (since balance went down, not up)
+    assert store.get_balances()["peak_demo_balance"] == 1000000.0
+    
+    # 4. Check that when pause expires, peak balance resets to current balance (700,000)
+    import time
+    store._parity_pause_until = time.time() - 10 # expired 10 seconds ago
+    store._size_pause_until = time.time() - 10
+    
+    # Calling get_daily_loss_info should auto-reset peak and clear pause
+    info = store.get_daily_loss_info()
+    assert info["parity_pause_until"] is None
+    assert info["size_pause_until"] is None
+    assert store.get_balances()["peak_demo_balance"] == 700000.0
+
+
+def test_ping_pong_overall_probability_override():
+    from src.database.store import store
+    store.clear()
+    store.clear_demo_bets()
+    
+    # Construct a history of 35 alternating rounds
+    history = []
+    for i in range(35):
+        val = (i % 2 == 0)
+        history.append({
+            "issue": f"20260701{i:03d}",
+            "numbers": [1, 2, 3, 4, 5] if val else [2, 2, 2, 2, 2],
+            "total": 15 if val else 10,
+            "is_tai": True,
+            "is_le": val
+        })
+
+    # Run analysis
+    from src.core.analyzer import ProbabilityAnalyzer
+    res = ProbabilityAnalyzer.analyze(history)
+    
+    # Standard ping-pong predicts: not history[0]["is_le"] = False (Chan) -> "MUA CHẴN".
+    # BUT overall probability of Le (8/15) is higher than Chan (7/15).
+    # Therefore, the override changes it to "MUA LẺ" and rationale contains "Hiệu chỉnh".
+    
+    assert res["ai_recommendation"]["parity"]["decision"] == "MUA LẺ"
+    assert "Hiệu chỉnh theo xác suất tổng thể" in res["ai_recommendation"]["parity"]["rationale"]
+
+
+
+
+
+
 

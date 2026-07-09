@@ -1,7 +1,7 @@
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from contextlib import asynccontextmanager
 import os
 
@@ -36,15 +36,20 @@ app.add_middleware(
 # Dang ky routes
 app.include_router(router)
 
-# Load HTML content from views folder
-views_dir = os.path.dirname(os.path.abspath(__file__))
-html_path = os.path.join(views_dir, "views", "index.html")
-with open(html_path, "r", encoding="utf-8") as f:
-    HTML_CONTENT = f.read()
+# Get views directory path
+views_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "views")
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    return HTML_CONTENT
+    return FileResponse(os.path.join(views_dir, "index.html"))
+
+@app.get("/style.css")
+async def get_css():
+    return FileResponse(os.path.join(views_dir, "style.css"), media_type="text/css")
+
+@app.get("/app.js")
+async def get_js():
+    return FileResponse(os.path.join(views_dir, "app.js"), media_type="application/javascript")
 
 
 if __name__ == "__main__":

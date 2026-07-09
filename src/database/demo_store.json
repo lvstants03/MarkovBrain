@@ -1,0 +1,468 @@
+{
+  "demo_balance": 2025050.0,
+  "peak_demo_balance": 2970050.0,
+  "demo_bet_amount": 25000.0,
+  "demo_bet_strategy": "kelly_half_stoploss",
+  "parity_loss_streak": 1,
+  "size_loss_streak": 0,
+  "demo_bets": {
+    "202607090390": [
+      {
+        "issue": "202607090390",
+        "timestamp": 1783584451.7069066,
+        "time": "15:07:31 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA XỈU",
+        "amount": 25000.0,
+        "status": "win",
+        "win_amount": 48750.0,
+        "balance_after": 1023750.0
+      }
+    ],
+    "202607090391": [
+      {
+        "issue": "202607090391",
+        "timestamp": 1783584457.222589,
+        "time": "15:07:37 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA XỈU",
+        "amount": 25000.0,
+        "status": "win",
+        "win_amount": 48750.0,
+        "balance_after": 1047500.0
+      }
+    ],
+    "202607090392": [
+      {
+        "issue": "202607090392",
+        "timestamp": 1783584536.3202991,
+        "time": "15:08:56 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA LẺ",
+        "amount": 25000.0,
+        "status": "lose",
+        "win_amount": 0.0,
+        "balance_after": 997500.0
+      },
+      {
+        "issue": "202607090392",
+        "timestamp": 1783584536.3257663,
+        "time": "15:08:56 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA XỈU",
+        "amount": 25000.0,
+        "status": "win",
+        "win_amount": 48750.0,
+        "balance_after": 1046250.0
+      }
+    ],
+    "202607090393": [
+      {
+        "issue": "202607090393",
+        "timestamp": 1783584610.1968796,
+        "time": "15:10:10 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA LẺ",
+        "amount": 75000.0,
+        "status": "win",
+        "win_amount": 146250.0,
+        "balance_after": 1117500.0
+      }
+    ],
+    "202607090394": [
+      {
+        "issue": "202607090394",
+        "timestamp": 1783584683.4998708,
+        "time": "15:11:23 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA LẺ",
+        "amount": 25000.0,
+        "status": "lose",
+        "win_amount": 0.0,
+        "balance_after": 1067500.0
+      },
+      {
+        "issue": "202607090394",
+        "timestamp": 1783584683.500701,
+        "time": "15:11:23 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA XỈU",
+        "amount": 25000.0,
+        "status": "lose",
+        "win_amount": 0.0,
+        "balance_after": 1067500.0
+      }
+    ],
+    "202607090395": [
+      {
+        "issue": "202607090395",
+        "timestamp": 1783584757.9691632,
+        "time": "15:12:37 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA LẺ",
+        "amount": 75000.0,
+        "status": "win",
+        "win_amount": 146250.0,
+        "balance_after": 1063750.0
+      },
+      {
+        "issue": "202607090395",
+        "timestamp": 1783584757.9751527,
+        "time": "15:12:37 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA XỈU",
+        "amount": 75000.0,
+        "status": "win",
+        "win_amount": 146250.0,
+        "balance_after": 1210000.0
+      }
+    ],
+    "202607090396": [
+      {
+        "issue": "202607090396",
+        "timestamp": 1783584833.7214768,
+        "time": "15:13:53 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA LẺ",
+        "amount": 25000.0,
+        "status": "win",
+        "win_amount": 48750.0,
+        "balance_after": 1208750.0
+      },
+      {
+        "issue": "202607090396",
+        "timestamp": 1783584833.725116,
+        "time": "15:13:53 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA XỈU",
+        "amount": 25000.0,
+        "status": "win",
+        "win_amount": 48750.0,
+        "balance_after": 1257500.0
+      }
+    ],
+    "202607090397": [
+      {
+        "issue": "202607090397",
+        "timestamp": 1783584914.6297846,
+        "time": "15:15:14 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA LẺ",
+        "amount": 86000,
+        "status": "win",
+        "win_amount": 167700.0,
+        "balance_after": 1259200.0
+      },
+      {
+        "issue": "202607090397",
+        "timestamp": 1783584914.6309977,
+        "time": "15:15:14 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA XỈU",
+        "amount": 80000,
+        "status": "lose",
+        "win_amount": 0.0,
+        "balance_after": 1259200.0
+      }
+    ],
+    "202607090398": [
+      {
+        "issue": "202607090398",
+        "timestamp": 1783584982.750777,
+        "time": "15:16:22 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA XỈU",
+        "amount": 86000,
+        "status": "lose",
+        "win_amount": 0.0,
+        "balance_after": 1173200.0
+      }
+    ],
+    "202607090399": [
+      {
+        "issue": "202607090399",
+        "timestamp": 1783585058.1681478,
+        "time": "15:17:38 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA LẺ",
+        "amount": 80000,
+        "status": "win",
+        "win_amount": 156000.0,
+        "balance_after": 1249200.0
+      }
+    ],
+    "202607090400": [
+      {
+        "issue": "202607090400",
+        "timestamp": 1783585143.1669257,
+        "time": "15:19:03 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA LẺ",
+        "amount": 86000,
+        "status": "win",
+        "win_amount": 167700.0,
+        "balance_after": 1250900.0
+      },
+      {
+        "issue": "202607090400",
+        "timestamp": 1783585143.1688735,
+        "time": "15:19:03 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA TÀI",
+        "amount": 80000,
+        "status": "win",
+        "win_amount": 156000.0,
+        "balance_after": 1406900.0
+      }
+    ],
+    "202607090401": [
+      {
+        "issue": "202607090401",
+        "timestamp": 1783585213.7461107,
+        "time": "15:20:13 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA LẺ",
+        "amount": 97000,
+        "status": "win",
+        "win_amount": 189150.0,
+        "balance_after": 1409050.0
+      },
+      {
+        "issue": "202607090401",
+        "timestamp": 1783585213.7475755,
+        "time": "15:20:13 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA TÀI",
+        "amount": 90000,
+        "status": "lose",
+        "win_amount": 0.0,
+        "balance_after": 1409050.0
+      }
+    ],
+    "202607090402": [
+      {
+        "issue": "202607090402",
+        "timestamp": 1783585283.1690648,
+        "time": "15:21:23 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA XỈU",
+        "amount": 126000,
+        "status": "win",
+        "win_amount": 245700.0,
+        "balance_after": 1528750.0
+      }
+    ],
+    "202607090403": [
+      {
+        "issue": "202607090403",
+        "timestamp": 1783585358.171742,
+        "time": "15:22:38 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA CHẴN",
+        "amount": 105000,
+        "status": "win",
+        "win_amount": 204750.0,
+        "balance_after": 1458500.0
+      },
+      {
+        "issue": "202607090403",
+        "timestamp": 1783585358.1730902,
+        "time": "15:22:38 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA XỈU",
+        "amount": 170000,
+        "status": "lose",
+        "win_amount": 0.0,
+        "balance_after": 1458500.0
+      }
+    ],
+    "202607090404": [
+      {
+        "issue": "202607090404",
+        "timestamp": 1783585433.1653955,
+        "time": "15:23:53 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA CHẴN",
+        "amount": 175000,
+        "status": "win",
+        "win_amount": 341250.0,
+        "balance_after": 1532750.0
+      },
+      {
+        "issue": "202607090404",
+        "timestamp": 1783585433.1672316,
+        "time": "15:23:53 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA TÀI",
+        "amount": 92000,
+        "status": "win",
+        "win_amount": 179400.0,
+        "balance_after": 1712150.0
+      }
+    ],
+    "202607090405": [
+      {
+        "issue": "202607090405",
+        "timestamp": 1783585513.2036169,
+        "time": "15:25:13 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA CHẴN",
+        "amount": 205000,
+        "status": "lose",
+        "win_amount": 0.0,
+        "balance_after": 1349150.0
+      },
+      {
+        "issue": "202607090405",
+        "timestamp": 1783585513.2053359,
+        "time": "15:25:13 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA TÀI",
+        "amount": 158000,
+        "status": "win",
+        "win_amount": 308100.0,
+        "balance_after": 1657250.0
+      }
+    ],
+    "202607090406": [
+      {
+        "issue": "202607090406",
+        "timestamp": 1783585588.2162788,
+        "time": "15:26:28 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA LẺ",
+        "amount": 198000,
+        "status": "win",
+        "win_amount": 386100.0,
+        "balance_after": 1670350.0
+      },
+      {
+        "issue": "202607090406",
+        "timestamp": 1783585588.2204206,
+        "time": "15:26:28 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA TÀI",
+        "amount": 175000,
+        "status": "win",
+        "win_amount": 341250.0,
+        "balance_after": 2011600.0
+      }
+    ],
+    "202607090407": [
+      {
+        "issue": "202607090407",
+        "timestamp": 1783585658.171762,
+        "time": "15:27:38 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA LẺ",
+        "amount": 241000,
+        "status": "win",
+        "win_amount": 469950.0,
+        "balance_after": 2240550.0
+      }
+    ],
+    "202607090408": [
+      {
+        "issue": "202607090408",
+        "timestamp": 1783585733.2513628,
+        "time": "15:28:53 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA LẺ",
+        "amount": 268000,
+        "status": "lose",
+        "win_amount": 0.0,
+        "balance_after": 1736550.0
+      },
+      {
+        "issue": "202607090408",
+        "timestamp": 1783585733.2533875,
+        "time": "15:28:53 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA TÀI",
+        "amount": 236000,
+        "status": "win",
+        "win_amount": 460200.0,
+        "balance_after": 2196750.0
+      }
+    ],
+    "202607090409": [
+      {
+        "issue": "202607090409",
+        "timestamp": 1783585817.0669527,
+        "time": "15:30:17 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA XỈU",
+        "amount": 263000,
+        "status": "win",
+        "win_amount": 512850.0,
+        "balance_after": 2446600.0
+      }
+    ],
+    "202607090410": [
+      {
+        "issue": "202607090410",
+        "timestamp": 1783585883.710208,
+        "time": "15:31:23 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA CHẴN",
+        "amount": 293000,
+        "status": "win",
+        "win_amount": 571350.0,
+        "balance_after": 2466950.0
+      },
+      {
+        "issue": "202607090410",
+        "timestamp": 1783585883.7116318,
+        "time": "15:31:23 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA XỈU",
+        "amount": 258000,
+        "status": "win",
+        "win_amount": 503100.0,
+        "balance_after": 2970050.0
+      }
+    ],
+    "202607090411": [
+      {
+        "issue": "202607090411",
+        "timestamp": 1783585958.7311397,
+        "time": "15:32:38 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA CHẴN",
+        "amount": 356000,
+        "status": "lose",
+        "win_amount": 0.0,
+        "balance_after": 2614050.0
+      }
+    ],
+    "202607090412": [
+      {
+        "issue": "202607090412",
+        "timestamp": 1783586033.7206607,
+        "time": "15:33:53 09/07/2026",
+        "market_type": "parity",
+        "prediction": "MUA LẺ",
+        "amount": 313000,
+        "status": "pending",
+        "win_amount": 0.0,
+        "balance_after": 2301050.0
+      },
+      {
+        "issue": "202607090412",
+        "timestamp": 1783586033.7227376,
+        "time": "15:33:53 09/07/2026",
+        "market_type": "size",
+        "prediction": "MUA XỈU",
+        "amount": 276000,
+        "status": "pending",
+        "win_amount": 0.0,
+        "balance_after": 2025050.0
+      }
+    ]
+  },
+  "capital_collapses": [],
+  "parity_daily_loss_count": 5,
+  "size_daily_loss_count": 5,
+  "parity_pause_until": null,
+  "size_pause_until": null
+}
