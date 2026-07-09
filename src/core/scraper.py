@@ -125,10 +125,88 @@ class WebSocketScraper:
             logger.error(f"Error during automated fetch: {str(e)}")
             return 0
 
+    def _get_api_auth(self):
+        from urllib.parse import urlparse, parse_qs
+        domain = config.TARGET_DOMAIN
+        token = ""
+        try:
+            parsed = urlparse(self.ws_url)
+            if parsed.netloc:
+                domain = parsed.netloc
+            query_params = parse_qs(parsed.query)
+            if "token" in query_params:
+                token = query_params["token"][0]
+        except Exception as e:
+            logger.error(f"Error parsing ws_url: {e}")
+        return domain, token
+
+    async def fetch_user_balance(self) -> float:
+        domain, token = self._get_api_auth()
+        if not token:
+            return 0.0
+            
+        url = f"https://{domain}/server/user/getBalance?refresh=1"
+        origin_url = f"https://{domain}"
+        
+        # Doc HTTP headers va cookie tu store neu co
+        stored_http = store.get_http_headers()
+        cf_auth_token = stored_http.get("cf_auth_token") or f"Bearer.{token}"
+        cookie = stored_http.get("cookie")
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Origin": origin_url,
+            "Referer": f"{origin_url}/",
+            "token": token,
+            "Authorization": f"Bearer {token}",
+            "cf-auth-token": cf_auth_token,
+            "x-device": "pc",
+            "x-lang": "vi"
+        }
+        if cookie:
+            headers["cookie"] = cookie
+        
+        try:
+            response = await asyncio.to_thread(
+                requests.get,
+                url,
+                headers=headers,
+                timeout=10
+            )
+            if response.status_code == 200:
+                payload = response.json()
+                if isinstance(payload, dict):
+                    if payload.get("code") == 1:
+                        data = payload.get("data")
+                        if isinstance(data, dict):
+                            # total_money la tong so du chinh xac nhat (bao gom ca tien khuyen mai)
+                            val = data.get("total_money") or data.get("total_asset") or data.get("money") or data.get("balance") or 0.0
+                            if str(val).strip() == "":
+                                val = 0.0
+                            balance = float(val)
+                            store.update_real_balance(balance)
+                            logger.info(f"[{config.LOTTERY_CODE}] Successfully fetched real balance: {balance} VND")
+                            return balance
+                        elif data is not None and str(data).strip() != "":
+                            balance = float(data)
+                            store.update_real_balance(balance)
+                            logger.info(f"[{config.LOTTERY_CODE}] Successfully fetched real balance: {balance} VND")
+                            return balance
+                    elif payload.get("code") in (1004, 1005) or "hết hạn" in str(payload.get("msg", "")).lower():
+                        logger.warning(f"[{config.LOTTERY_CODE}] Session expired (code {payload.get('code')}). Token needs to be updated!")
+            logger.warning(f"Failed to fetch balance, status code: {response.status_code}, response: {response.text[:200]}")
+        except Exception as e:
+            logger.error(f"Error fetching user balance: {e}")
+        return 0.0
+
     async def _fetch_loop(self):
         while self.is_running:
             if self.fetch_url:
                 await self.trigger_fetch()
+            # Tu dong cap nhat so du thuc te
+            await self.fetch_user_balance()
             # Cho den chu ky tiếp theo
             await asyncio.sleep(self.fetch_interval)
 
@@ -167,7 +245,7 @@ class WebSocketScraper:
             self.connection_status = "connecting"
             try:
                 logger.info(f"Connecting to target WebSocket: {self.ws_url}")
-                origin = "https://vip.ee8833.me"
+                origin = f"https://{config.TARGET_DOMAIN}"
                 try:
                     from urllib.parse import urlparse
                     parsed = urlparse(self.ws_url)
@@ -275,6 +353,7 @@ class WebSocketScraper:
                         added = store.add_record(target_issue, numbers)
                         if added:
                             logger.info(f"[{config.LOTTERY_CODE}] Received new real issue {target_issue}: {numbers}")
+                            asyncio.create_task(self.fetch_user_balance())
                             
             # Case 2: lottery_info or other periodic messages containing lists of lotteries
             else:
@@ -296,12 +375,13 @@ class WebSocketScraper:
                                              added = store.add_record(target_issue, numbers)
                                              if added:
                                                  logger.info(f"[{config.LOTTERY_CODE}] Received new real issue {target_issue}: {numbers}")
+                                                 asyncio.create_task(self.fetch_user_balance())
         except Exception as e:
             logger.error(f"Failed to process websocket message: {str(e)}. Raw: {message[:200]}")
     async def fetch_latest_info(self) -> int:
         from urllib.parse import urlparse, parse_qs
         
-        domain = "vip.ee8833.me"
+        domain = config.TARGET_DOMAIN
         token = ""
         try:
             parsed = urlparse(self.ws_url)
@@ -321,7 +401,7 @@ class WebSocketScraper:
             url_draw += f"&token={token}"
         urls = [url_info, url_draw]
         
-        origin_url = f"https://{domain}" if domain else "https://vip.ee8833.me"
+        origin_url = f"https://{domain}" if domain else f"https://{config.TARGET_DOMAIN}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",

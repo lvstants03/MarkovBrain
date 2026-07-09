@@ -1,33 +1,59 @@
-# Kế hoạch triển khai - Hiển thị Xác suất Thực tế 100% (Không quy đổi ảo)
+# Kế hoạch triển khai - Tự động đặt cược (Auto-Bet) bằng Tampermonkey
 
-Kế hoạch này điều chỉnh cách hiển thị độ tự tin cược trên giao diện Dashboard thành **Xác suất toán học thực tế 100%** (không dùng công thức quy đổi ảo), đảm bảo tính minh bạch, chính xác và trung thực tuyệt đối của số liệu hệ thống.
-
-## Phương án thiết lập Xác suất thực tế & Ngưỡng động
-
-1. **Hiển thị xác suất thực tế 100%:**
-   - Độ tự tin cược (Confidence) hiển thị trên giao diện sẽ bằng chính xác **Xác suất tổng hợp thực tế** (`combined_prob`) tính toán từ Sliding Window và xích Markov:
-     $$Confidence_{\text{hiển thị}} = \text{round}(combined\_prob \times 100)\%$$
-     Ví dụ: Nếu xác suất tổng hợp thực tế tính ra là `69.3%`, giao diện sẽ hiển thị đúng `69%` hoặc `69.3%`, không làm tròn lên `80%` hay các con số ảo khác.
-
-2. **Ngưỡng cược thích ứng động thực tế:**
-   - Chúng ta vẫn giữ nguyên cơ chế **Ngưỡng Động Thích Ứng (Adaptive Threshold)** để cân bằng số lượng dự đoán luôn đạt từ 8 - 12 cược mỗi 30 kỳ:
-     - Thị trường giằng co ($AR \ge 0.60$): Chỉ cược khi xác suất thực tế đạt **`>= 68%`**.
-     - Thị trường bình thường ($0.40 \le AR < 0.60$): Cược khi xác suất thực tế đạt **`>= 65%`**.
-     - Thị trường bệt ổn định ($AR < 0.40$): Cược khi xác suất thực tế đạt **`>= 62%`**.
-   - Việc hiển thị xác suất thực tế sẽ giúp bạn biết chính xác thế trận cược mạnh hay yếu ở từng kỳ cược cụ thể.
+Chúng tôi đề xuất cơ chế đặt cược tự động an toàn thông qua Script Tampermonkey chạy trực tiếp trên trình duyệt của người dùng. Script sẽ giả lập hành vi click của con người để đặt cược dựa trên dự đoán từ Bot local.
 
 ---
 
-## Các thay đổi đề xuất
+## Nguyên lý hoạt động (Flow)
 
-### Thành phần: AI Core / Analyzer
-#### [SỬA] [analyzer.py](file:///d:/Dev/Projects/DEV_PYTHONs/Xác xuất/src/core/analyzer.py)
-- Cập nhật heuristics để xuất trực tiếp `combined_prob` làm `confidence` cho cả cược Parity và Size, hoàn toàn không qua công thức quy đổi ảo.
+```mermaid
+sequenceDiagram
+    participant Bot as Bot Python (Local)
+    participant TM as Script Tampermonkey
+    participant Game as Trang web Game (EE88)
+    
+    TM->>Bot: 1. Lấy dữ liệu dự đoán (/api/predictions)
+    Bot-->>TM: Trả về dự đoán (ví dụ: MUA LẺ, tiền cược: 300k)
+    TM->>Game: 2. Kiểm tra kỳ hiện tại trên giao diện có khớp không
+    alt Khớp kỳ & Chưa cược kỳ này
+        TM->>Game: 3. Click nút chọn cửa cược (ví dụ: "Lẻ")
+        TM->>Game: 4. Điền số tiền cược vào ô "Cược đơn" (300,000)
+        TM->>Game: 5. Click nút "Đặt Cược" để hoàn tất lệnh cược thật
+        TM->>TM: Đánh dấu kỳ này đã cược xong
+    end
+```
 
 ---
 
-## Kế hoạch kiểm thử
+## Các bước triển khai chi tiết
 
-### Kiểm thử tự động
-- Chạy lệnh `pytest` để đảm bảo logic toán học thực tế hoạt động trơn tru.
-Sẽ thực hiện sau. 
+### Bước 1: Xây dựng Endpoint API hỗ trợ Auto-Bet trên Bot
+* Tạo endpoint `GET /api/next-action` trả về thông tin cược sẵn sàng cho kỳ tiếp theo:
+  ```json
+  {
+    "status": "success",
+    "issue": "202607080432",
+    "parity": { "decision": "MUA LẺ", "amount": 300000 },
+    "size": { "decision": "BỎ QUA", "amount": 0 }
+  }
+  ```
+
+### Bước 2: Tích hợp logic tìm nút và đặt cược vào Script Tampermonkey
+Script sẽ tìm các phần tử HTML trên trang game theo cấu trúc mẫu:
+1. **Nút chọn cửa:**
+   - Tìm các thẻ chứa chữ "Lẻ", "Chẵn", "Tài", "Xỉu" trong phần "Kèo đôi".
+   - Ví dụ Selector dự kiến: `//div[contains(text(), 'Kèo đôi')]/..//span[contains(text(), 'Lẻ')]` (dùng XPath hoặc ClassName cụ thể).
+2. **Ô nhập tiền cược:**
+   - Tìm ô Input kế bên nhãn "Cược đơn:".
+3. **Nút đặt cược:**
+   - Tìm nút màu xanh ở góc phải chứa chữ "Đặt Cược".
+
+### Bước 3: Cơ chế chống cược lặp (Double Bet Prevention)
+* Script lưu trạng thái `last_bet_issue = "202607080432"` vào `localStorage` của trình duyệt.
+* Chỉ đặt cược nếu `Kỳ tiếp theo trên game == Kỳ dự đoán` và `Kỳ dự đoán != last_bet_issue`.
+
+---
+
+## Nghiệm thu & Kiểm thử an toàn
+1. **Chạy thử nghiệm ở chế độ hiển thị (Dry-Run):** Script chỉ tự động Click chọn cửa và điền số tiền, nhưng **KHÔNG** click nút "Đặt cược" để anh kiểm tra xem script đã click và điền đúng tiền cược chưa.
+2. **Chạy thật:** Sau khi anh xác nhận Dry-run chuẩn xác, kích hoạt tự động Click nút "Đặt cược".

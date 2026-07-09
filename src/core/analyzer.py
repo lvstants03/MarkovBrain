@@ -120,7 +120,9 @@ Bạn BẮT BUỘC phải trả về kết quả dưới dạng JSON object tuâ
   }}
 }}
 """
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+        gemini_model = getattr(config, "GEMINI_MODEL", "gemini-2.5-flash")
+        gemini_version = getattr(config, "GEMINI_API_VERSION", "v1beta")
+        url = f"https://generativelanguage.googleapis.com/{gemini_version}/models/{gemini_model}:generateContent?key={api_key}"
         payload = {
             "contents": [{
                 "parts": [{
@@ -242,46 +244,59 @@ Bạn BẮT BUỘC phải trả về kết quả dưới dạng JSON object tuâ
                 prob_next_xiu = 1 - pred_streak_tai_switch
             predicted_size = "Tai" if prob_next_tai >= prob_next_xiu else "Xiu"
 
-        # 3. Dự đoán xác suất kỳ tiếp theo bằng xích Markov (Markov Chain - Cấp 1) lam tham khao
+        # 3. Dự đoán xác suất kỳ tiếp theo bằng xích Markov Cấp 2 (Markov Chain Order 2)
         pred_le = prob_le_sliding
         pred_tai = prob_tai_sliding
         
-        if total_records > 10:
-            transitions_le = {"L_L": 0, "L_C": 0, "C_L": 0, "C_C": 0}
-            for i in range(len(df) - 1):
+        if total_records > 15:
+            # --- Parity Markov Order 2 ---
+            states_le = {
+                "L_L": {"L": 0, "C": 0},
+                "L_C": {"L": 0, "C": 0},
+                "C_L": {"L": 0, "C": 0},
+                "C_C": {"L": 0, "C": 0}
+            }
+            # df is ordered newest first. so index i is newer than i+1
+            for i in range(len(df) - 2):
                 curr = "L" if df.iloc[i]["is_le"] else "C"
                 prev = "L" if df.iloc[i+1]["is_le"] else "C"
-                transitions_le[f"{prev}_{curr}"] += 1
+                prev2 = "L" if df.iloc[i+2]["is_le"] else "C"
+                states_le[f"{prev2}_{prev}"][curr] += 1
                 
             last_state = "L" if df.iloc[0]["is_le"] else "C"
-            if last_state == "L":
-                total_from_l = transitions_le["L_L"] + transitions_le["L_C"]
-                if total_from_l > 0:
-                    pred_le = transitions_le["L_L"] / total_from_l
-            else:
-                total_from_c = transitions_le["C_L"] + transitions_le["C_C"]
-                if total_from_c > 0:
-                    pred_le = transitions_le["C_L"] / total_from_c
-                    
-            transitions_tai = {"T_T": 0, "T_X": 0, "X_T": 0, "X_X": 0}
-            for i in range(len(df) - 1):
+            last_prev = "L" if df.iloc[1]["is_le"] else "C"
+            current_state_le = f"{last_prev}_{last_state}"
+            
+            total_from_state_le = states_le[current_state_le]["L"] + states_le[current_state_le]["C"]
+            if total_from_state_le > 0:
+                pred_le = states_le[current_state_le]["L"] / total_from_state_le
+                
+            # --- Size Markov Order 2 ---
+            states_tai = {
+                "T_T": {"T": 0, "X": 0},
+                "T_X": {"T": 0, "X": 0},
+                "X_T": {"T": 0, "X": 0},
+                "X_X": {"T": 0, "X": 0}
+            }
+            for i in range(len(df) - 2):
                 curr = "T" if df.iloc[i]["is_tai"] else "X"
                 prev = "T" if df.iloc[i+1]["is_tai"] else "X"
-                transitions_tai[f"{prev}_{curr}"] += 1
+                prev2 = "T" if df.iloc[i+2]["is_tai"] else "X"
+                states_tai[f"{prev2}_{prev}"][curr] += 1
                 
-            last_tai_state = "T" if df.iloc[0]["is_tai"] else "X"
-            if last_tai_state == "T":
-                total_from_t = transitions_tai["T_T"] + transitions_tai["T_X"]
-                if total_from_t > 0:
-                    pred_tai = transitions_tai["T_T"] / total_from_t
-            else:
-                total_from_x = transitions_tai["X_T"] + transitions_tai["X_X"]
-                if total_from_x > 0:
-                    pred_tai = transitions_tai["X_T"] / total_from_x
+            last_tai = "T" if df.iloc[0]["is_tai"] else "X"
+            last_prev_tai = "T" if df.iloc[1]["is_tai"] else "X"
+            current_state_tai = f"{last_prev_tai}_{last_tai}"
+            
+            total_from_state_tai = states_tai[current_state_tai]["T"] + states_tai[current_state_tai]["X"]
+            if total_from_state_tai > 0:
+                pred_tai = states_tai[current_state_tai]["T"] / total_from_state_tai
  
-        # Calculate max streaks
-        max_le_streak = ProbabilityAnalyzer._get_max_streak(series_le)
-        max_tai_streak = ProbabilityAnalyzer._get_max_streak(series_tai)
+        # Calculate max streaks (excluding active streak to get true historical max ceiling)
+        historical_le = series_le.iloc[:-active_le_len] if active_le_len > 0 else series_le
+        historical_tai = series_tai.iloc[:-active_tai_len] if active_tai_len > 0 else series_tai
+        max_le_streak = ProbabilityAnalyzer._get_max_streak(historical_le)
+        max_tai_streak = ProbabilityAnalyzer._get_max_streak(historical_tai)
 
         # AI Recommendation calculations
         parity_decision = "BỎ QUA"
@@ -357,13 +372,13 @@ Bạn BẮT BUỘC phải trả về kết quả dưới dạng JSON object tuâ
             size_confidence = int(gemini_pred["size"].get("confidence", 50))
             size_rationale = gemini_pred["size"].get("rationale", "Dự đoán bởi Gemini AI.")
         else:
-            # Upgraded 3-Layer + Saturation Trap Filter mathematical heuristics
-            # history is ordered newest first in the database store.
-            # So history[0] is the newest draw result.
-            N = min(15, len(history))
-            recent_history = history[:N]
+            # Upgraded dynamic mathematical heuristics based on BẢN GÓP Ý TỔNG THỂ
+            N_parity = min(15, len(history))
+            recent_history_parity = history[:N_parity]
+            N_size = min(20, len(history))
+            recent_history_size = history[:N_size]
             
-            # Calculate Alternating Rate (AR) for Parity and Size over the last 30 rounds
+            # 1. Calculate Alternating Rate (AR) for Parity and Size over the last 30 rounds
             M = min(30, len(history))
             parity_alternations = 0
             size_alternations = 0
@@ -375,139 +390,302 @@ Bạn BẮT BUỘC phải trả về kết quả dưới dạng JSON object tuâ
             ar_parity = parity_alternations / (M - 1) if M > 1 else 0.5
             ar_size = size_alternations / (M - 1) if M > 1 else 0.5
 
+            # Pure Python percentile function
+            def get_percentile(data, p):
+                if not data:
+                    return 0.5
+                s = sorted(data)
+                k = (len(s) - 1) * (p / 100)
+                f = int(k)
+                c = f + 1 if f < len(s) - 1 else f
+                if f == c:
+                    return s[f]
+                return s[f] * (c - k) + s[c] * (k - f)
+
+            # Calculate AR list for the last 30 periods (each period has 30 rounds) to get 75% percentile threshold
+            ar_parity_list = []
+            ar_size_list = []
+            for start_idx in range(min(30, max(1, len(history) - 30))):
+                window = history[start_idx : start_idx + 30]
+                if len(window) > 1:
+                    alt_p = sum(1 for k in range(len(window)-1) if window[k].get("is_le") != window[k+1].get("is_le"))
+                    alt_s = sum(1 for k in range(len(window)-1) if window[k].get("is_tai") != window[k+1].get("is_tai"))
+                    ar_parity_list.append(alt_p / (len(window)-1))
+                    ar_size_list.append(alt_s / (len(window)-1))
+            
+            ar_threshold_parity = max(0.5, get_percentile(ar_parity_list, 75))
+            ar_threshold_size = max(0.5, get_percentile(ar_size_list, 70))
+
+            # Calculate mean and standard deviation of sliding window probabilities over the last 100 rounds
+            K_z = min(100, len(history))
+            sliding_probs_le = []
+            sliding_probs_tai = []
+            for idx in range(K_z):
+                # Parity sliding window is 15
+                window_p = history[idx : idx + 15]
+                if len(window_p) > 0:
+                    le_w = sum(1 for r in window_p if r.get("is_le")) / len(window_p)
+                    sliding_probs_le.append(le_w)
+                # Size sliding window is 20
+                window_s = history[idx : idx + 20]
+                if len(window_s) > 0:
+                    tai_w = sum(1 for r in window_s if r.get("is_tai")) / len(window_s)
+                    sliding_probs_tai.append(tai_w)
+            
+            mean_le = sum(sliding_probs_le) / len(sliding_probs_le) if sliding_probs_le else 0.5
+            var_le = sum((x - mean_le) ** 2 for x in sliding_probs_le) / len(sliding_probs_le) if sliding_probs_le else 0.01
+            std_le = max(0.05, var_le ** 0.5)
+            
+            mean_tai = sum(sliding_probs_tai) / len(sliding_probs_tai) if sliding_probs_tai else 0.5
+            var_tai = sum((x - mean_tai) ** 2 for x in sliding_probs_tai) / len(sliding_probs_tai) if sliding_probs_tai else 0.01
+            std_tai = max(0.05, var_tai ** 0.5)
+            
+            # Saturation thresholds using percentile 85% instead of Z-score
+            T_sat_le = get_percentile(sliding_probs_le, 85)
+            T_sat_chan = get_percentile([1.0 - x for x in sliding_probs_le], 85)
+            T_sat_tai = get_percentile(sliding_probs_tai, 85)
+            T_sat_xiu = get_percentile([1.0 - x for x in sliding_probs_tai], 85)
+
+            # 2. Cooling-off mechanism from database prediction history
+            from src.database.store import store
+            pred_hist = store.get_prediction_history(limit=5)
+            
+            parity_loss_streak = 0
+            for p in pred_hist:
+                status_p = p.get("status_parity")
+                if status_p == "lose":
+                    parity_loss_streak += 1
+                elif status_p == "win" or status_p == "ignored":
+                    break
+            is_parity_cooling = (parity_loss_streak >= 2)
+            
+            parity_win_streak = 0
+            for p in pred_hist:
+                status_p = p.get("status_parity")
+                if status_p == "win":
+                    parity_win_streak += 1
+                elif status_p == "lose" or status_p == "ignored":
+                    break
+            is_parity_win_streak_pause = (parity_win_streak >= 3)
+            
+            size_loss_streak = 0
+            for p in pred_hist:
+                status_s = p.get("status_size")
+                if status_s == "lose":
+                    size_loss_streak += 1
+                elif status_s == "win" or status_s == "ignored":
+                    break
+            is_size_cooling = (size_loss_streak >= 2)
+
+            size_win_streak = 0
+            for p in pred_hist:
+                status_s = p.get("status_size")
+                if status_s == "win":
+                    size_win_streak += 1
+                elif status_s == "lose" or status_s == "ignored":
+                    break
+            is_size_win_streak_pause = (size_win_streak >= 3)
+
             # ----------------------------------------------------
             # 1. PARITY (Chẵn/Lẻ) Prediction
             # ----------------------------------------------------
-            recent_le_count = sum(1 for r in recent_history if r.get("is_le"))
-            recent_chan_count = N - recent_le_count
-            prob_le_sliding = recent_le_count / N if N > 0 else 0.5
-            prob_chan_sliding = recent_chan_count / N if N > 0 else 0.5
+            recent_le_count = sum(1 for r in recent_history_parity if r.get("is_le"))
+            recent_chan_count = N_parity - recent_le_count
+            prob_le_sliding = recent_le_count / N_parity if N_parity > 0 else 0.5
+            prob_chan_sliding = recent_chan_count / N_parity if N_parity > 0 else 0.5
 
             parity_decision = "BỎ QUA"
             parity_confidence = 50
             parity_rationale = "Tín hiệu thị trường lưỡng lự, chuỗi bệt ngắn hoặc xác suất cân bằng."
 
-            if ar_parity >= 0.60:
+            if is_parity_cooling:
+                parity_decision = "BỎ QUA"
+                parity_confidence = 50
+                parity_rationale = f"Không cược - Kích hoạt chế độ nghỉ bảo vệ (Cooling-off) sau {parity_loss_streak} kỳ thua liên tiếp."
+            elif is_parity_win_streak_pause:
+                parity_decision = "BỎ QUA"
+                parity_confidence = 50
+                parity_rationale = f"Không cược - Chốt lời ngắn hạn sau chuỗi {parity_win_streak} kỳ thắng liên tiếp để bảo toàn lợi nhuận."
+            elif ar_parity >= ar_threshold_parity:
                 # ----------------------------------------------------
-                # PING-PONG SNIPER (ar >= 0.60)
+                # PING-PONG SNIPER (ar >= ar_threshold_parity)
                 # ----------------------------------------------------
-                if len(history) >= 1:
+                if len(history) >= 2:
                     last_is_le = history[0].get("is_le")
-                    predicted_is_le = not last_is_le
+                    prev_is_le = history[1].get("is_le")
                     
-                    parity_decision = "MUA LẺ" if predicted_is_le else "MUA CHẴN"
-                    parity_confidence = int(ar_parity * 100)
-                    parity_rationale = f"Phát hiện thị trường răng cưa (Alternating Rate: {ar_parity*100:.1f}%). Đánh đảo chiều: mua {'Lẻ' if predicted_is_le else 'Chẵn'}."
+                    if last_is_le != prev_is_le:
+                        # Răng cưa nguyên vẹn -> cược đảo chiều
+                        predicted_is_le = not last_is_le
+                        base_rationale = f"Phát hiện thị trường răng cưa (Alternating Rate: {ar_parity*100:.1f}%). Đánh đảo chiều"
+                        base_confidence = int(ar_parity * 100)
+                    else:
+                        # Răng cưa đã bị bẻ -> cược thuận xu hướng mới
+                        predicted_is_le = last_is_le
+                        base_rationale = f"Răng cưa gãy (kỳ trước ra trùng). Đánh thuận xu hướng mới"
+                        base_confidence = int(ar_parity * 90)
+                else:
+                    last_is_le = history[0].get("is_le") if len(history) > 0 else True
+                    predicted_is_le = not last_is_le
+                    base_rationale = f"Phát hiện thị trường răng cưa (Alternating Rate: {ar_parity*100:.1f}%). Đánh đảo chiều"
+                    base_confidence = int(ar_parity * 100)
+                
+                # Check overall probability to override
+                if predicted_is_le and prob_le_sliding < prob_chan_sliding:
+                    predicted_is_le = False
+                    parity_rationale = f"{base_rationale}: mua Chẵn (Hiệu chỉnh theo xác suất tổng thể: Chẵn {prob_chan_sliding*100:.1f}% > Lẻ {prob_le_sliding*100:.1f}%)."
+                elif not predicted_is_le and prob_chan_sliding < prob_le_sliding:
+                    predicted_is_le = True
+                    parity_rationale = f"{base_rationale}: mua Lẻ (Hiệu chỉnh theo xác suất tổng thể: Lẻ {prob_le_sliding*100:.1f}% > Chẵn {prob_chan_sliding*100:.1f}%)."
+                else:
+                    parity_rationale = f"{base_rationale}: mua {'Lẻ' if predicted_is_le else 'Chẵn'}."
+                
+                parity_decision = "MUA LẺ" if predicted_is_le else "MUA CHẴN"
+                parity_confidence = base_confidence
             else:
                 # ----------------------------------------------------
-                # TRENDING CONSENSUS SNIPER (ar < 0.60)
+                # TRENDING CONSENSUS SNIPER (ar < ar_threshold_parity)
                 # ----------------------------------------------------
-                # Sliding predictions
-                sliding_pred = "Le" if prob_le_sliding >= 0.55 else "Chan" if prob_chan_sliding >= 0.55 else "None"
-                # Markov predictions
-                markov_pred = "Le" if pred_le >= 0.52 else "Chan" if (1.0 - pred_le) >= 0.52 else "None"
+                # Sliding predictions using mean + 0.3*std (optimized)
+                sliding_pred = "Le" if prob_le_sliding >= (mean_le + 0.3 * std_le) else "Chan" if prob_chan_sliding >= ((1.0 - mean_le) + 0.3 * std_le) else "None"
+                # Markov predictions using 0.51 threshold (optimized)
+                markov_pred = "Le" if pred_le >= 0.51 else "Chan" if (1.0 - pred_le) >= 0.51 else "None"
                 
                 # Consensus check
                 if sliding_pred != "None" and markov_pred != "None" and sliding_pred == markov_pred:
-                    # Require 2-step trend confirmation to make sure we don't bet on single noise
-                    if len(history) >= 2:
-                        last_parity_state = "Le" if history[0].get("is_le") else "Chan"
-                        prev_parity_state = "Le" if history[1].get("is_le") else "Chan"
-                        
-                        if last_parity_state == prev_parity_state and last_parity_state == ( "Le" if sliding_pred == "Le" else "Chan" ):
-                            # Saturated trap check
-                            is_saturated = (sliding_pred == "Le" and prob_le_sliding >= 0.80) or (sliding_pred == "Chan" and prob_chan_sliding >= 0.80)
-                            if not is_saturated:
-                                parity_decision = "MUA LẺ" if sliding_pred == "Le" else "MUA CHẴN"
-                                parity_confidence = int((0.6 * (prob_le_sliding if sliding_pred == "Le" else prob_chan_sliding) + 0.4 * (pred_le if sliding_pred == "Le" else 1.0 - pred_le)) * 100)
-                                parity_rationale = f"Đồng thuận xu hướng {'Lẻ' if sliding_pred == 'Le' else 'Chẵn'}. Xác suất tổng hợp thực tế: {parity_confidence}%."
-                            else:
-                                parity_rationale = f"Không cược - Phát hiện bẫy {'Lẻ' if sliding_pred == 'Le' else 'Chẵn'} đạt đỉnh (Xác suất trượt: {(prob_le_sliding if sliding_pred == 'Le' else prob_chan_sliding)*100:.1f}%)."
-                        else:
-                            parity_rationale = "Không cược - Chờ nhịp đồng nhất xu hướng."
+                    # Bỏ điều kiện last == prev (2-step confirmation) để tránh chậm lệnh
+                    is_saturated = (sliding_pred == "Le" and prob_le_sliding >= T_sat_le) or (sliding_pred == "Chan" and prob_chan_sliding >= T_sat_chan)
+                    if not is_saturated:
+                        parity_decision = "MUA LẺ" if sliding_pred == "Le" else "MUA CHẴN"
+                        # Dynamic Weighting Consensus: boost confidence by 1.05x (reduced from 1.15x)
+                        parity_confidence = int((0.6 * (prob_le_sliding if sliding_pred == "Le" else prob_chan_sliding) + 0.4 * (pred_le if sliding_pred == "Le" else 1.0 - pred_le)) * 100 * 1.05)
+                        parity_rationale = f"Đồng thuận xu hướng {'Lẻ' if sliding_pred == 'Le' else 'Chẵn'}. Xác suất tổng hợp: {parity_confidence}%."
+                    else:
+                        parity_rationale = f"Không cược - Phát hiện bẫy {'Lẻ' if sliding_pred == 'Le' else 'Chẵn'} đạt đỉnh (Xác suất trượt: {(prob_le_sliding if sliding_pred == 'Le' else prob_chan_sliding)*100:.1f}%, Ngưỡng bão hòa 85%: {T_sat_le*100:.1f}%)."
                 else:
                     parity_rationale = "Không cược - Chỉ báo xu hướng và Markov không đồng thuận."
 
-            # Layer 4: Cross-Market Correlation Risk Filter
+            # Layer 4: Softened Cross-Market Correlation Risk Filter
             if parity_decision == "MUA LẺ" and len(history) >= 5:
-                # If Size has been all Xiu for last 5 rounds, skip
                 if all(not r.get("is_tai") for r in history[:5]):
-                    parity_decision = "BỎ QUA"
-                    parity_confidence = 50
-                    parity_rationale = "Không cược - Phát hiện bẫy đảo chiều chéo (Size 5 kỳ gần nhất toàn Xỉu)."
+                    parity_confidence -= 15
+                    parity_rationale += " (Cảnh báo tương quan: bệt Xỉu 5 kỳ. Giảm 15% tự tin)."
+                    if parity_confidence < 55:
+                        parity_decision = "BỎ QUA"
+                        parity_rationale = "Không cược - Tránh rủi ro tương quan chéo (Tự tin rớt dưới 55%)."
             elif parity_decision == "MUA CHẴN" and len(history) >= 5:
-                # If Size has been all Tai for last 5 rounds, skip
                 if all(r.get("is_tai") for r in history[:5]):
-                    parity_decision = "BỎ QUA"
-                    parity_confidence = 50
-                    parity_rationale = "Không cược - Phát hiện bẫy đảo chiều chéo (Size 5 kỳ gần nhất toàn Tài)."
+                    parity_confidence -= 15
+                    parity_rationale += " (Cảnh báo tương quan: bệt Tài 5 kỳ. Giảm 15% tự tin)."
+                    if parity_confidence < 55:
+                        parity_decision = "BỎ QUA"
+                        parity_rationale = "Không cược - Tránh rủi ro tương quan chéo (Tự tin rớt dưới 55%)."
 
             # ----------------------------------------------------
             # 2. SIZE (Tài/Xỉu) Prediction
             # ----------------------------------------------------
-            recent_tai_count = sum(1 for r in recent_history if r.get("is_tai"))
-            recent_xiu_count = N - recent_tai_count
-            prob_tai_sliding = recent_tai_count / N if N > 0 else 0.5
-            prob_xiu_sliding = recent_xiu_count / N if N > 0 else 0.5
+            recent_tai_count = sum(1 for r in recent_history_size if r.get("is_tai"))
+            recent_xiu_count = N_size - recent_tai_count
+            prob_tai_sliding = recent_tai_count / N_size if N_size > 0 else 0.5
+            prob_xiu_sliding = recent_xiu_count / N_size if N_size > 0 else 0.5
 
             size_decision = "BỎ QUA"
             size_confidence = 50
             size_rationale = "Tín hiệu thị trường lưỡng lự, chuỗi bệt ngắn hoặc xác suất cân bằng."
 
-            if ar_size >= 0.60:
+            if is_size_cooling:
+                size_decision = "BỎ QUA"
+                size_confidence = 50
+                size_rationale = f"Không cược - Kích hoạt chế độ nghỉ bảo vệ (Cooling-off) sau {size_loss_streak} kỳ thua liên tiếp."
+            elif is_size_win_streak_pause:
+                size_decision = "BỎ QUA"
+                size_confidence = 50
+                size_rationale = f"Không cược - Chốt lời ngắn hạn sau chuỗi {size_win_streak} kỳ thắng liên tiếp để bảo toàn lợi nhuận."
+            elif ar_size >= ar_threshold_size:
                 # ----------------------------------------------------
-                # PING-PONG SNIPER (ar >= 0.60)
+                # PING-PONG SNIPER (ar >= ar_threshold_size)
                 # ----------------------------------------------------
-                if len(history) >= 1:
+                if len(history) >= 2:
                     last_is_tai = history[0].get("is_tai")
-                    predicted_is_tai = not last_is_tai
+                    prev_is_tai = history[1].get("is_tai")
                     
-                    size_decision = "MUA TÀI" if predicted_is_tai else "MUA XỈU"
-                    size_confidence = int(ar_size * 100)
-                    size_rationale = f"Phát hiện thị trường răng cưa (Alternating Rate: {ar_size*100:.1f}%). Đánh đảo chiều: mua {'Tài' if predicted_is_tai else 'Xỉu'}."
+                    if last_is_tai != prev_is_tai:
+                        # Răng cưa nguyên vẹn -> cược đảo chiều
+                        predicted_is_tai = not last_is_tai
+                        base_rationale = f"Phát hiện thị trường răng cưa (Alternating Rate: {ar_size*100:.1f}%). Đánh đảo chiều"
+                        base_confidence = int(ar_size * 100)
+                    else:
+                        # Răng cưa đã bị bẻ -> cược thuận xu hướng mới
+                        predicted_is_tai = last_is_tai
+                        base_rationale = f"Răng cưa gãy (kỳ trước ra trùng). Đánh thuận xu hướng mới"
+                        base_confidence = int(ar_size * 90)
+                else:
+                    last_is_tai = history[0].get("is_tai") if len(history) > 0 else True
+                    predicted_is_tai = not last_is_tai
+                    base_rationale = f"Phát hiện thị trường răng cưa (Alternating Rate: {ar_size*100:.1f}%). Đánh đảo chiều"
+                    base_confidence = int(ar_size * 100)
+                
+                # Check overall probability to override
+                if predicted_is_tai and prob_tai_sliding < prob_xiu_sliding:
+                    predicted_is_tai = False
+                    size_rationale = f"{base_rationale}: mua Xỉu (Hiệu chỉnh theo xác suất tổng thể: Xỉu {prob_xiu_sliding*100:.1f}% > Tài {prob_tai_sliding*100:.1f}%)."
+                elif not predicted_is_tai and prob_xiu_sliding < prob_tai_sliding:
+                    predicted_is_tai = True
+                    size_rationale = f"{base_rationale}: mua Tài (Hiệu chỉnh theo xác suất tổng thể: Tài {prob_tai_sliding*100:.1f}% > Xỉu {prob_xiu_sliding*100:.1f}%)."
+                else:
+                    size_rationale = f"{base_rationale}: mua {'Tài' if predicted_is_tai else 'Xỉu'}."
+                
+                size_decision = "MUA TÀI" if predicted_is_tai else "MUA XỈU"
+                size_confidence = base_confidence
             else:
                 # ----------------------------------------------------
-                # TRENDING CONSENSUS SNIPER (ar < 0.60)
+                # TRENDING CONSENSUS SNIPER (ar < ar_threshold_size)
                 # ----------------------------------------------------
-                # Sliding predictions
-                sliding_pred_size = "Tai" if prob_tai_sliding >= 0.55 else "Xiu" if prob_xiu_sliding >= 0.55 else "None"
-                # Markov predictions
-                markov_pred_size = "Tai" if pred_tai >= 0.52 else "Xiu" if (1.0 - pred_tai) >= 0.52 else "None"
+                # Sliding predictions using mean + 0.3*std (optimized)
+                sliding_pred_size = "Tai" if prob_tai_sliding >= (mean_tai + 0.3 * std_tai) else "Xiu" if prob_xiu_sliding >= ((1.0 - mean_tai) + 0.3 * std_tai) else "None"
+                # Markov predictions using 0.51 threshold (optimized)
+                markov_pred_size = "Tai" if pred_tai >= 0.51 else "Xiu" if (1.0 - pred_tai) >= 0.51 else "None"
                 
                 # Consensus check
                 if sliding_pred_size != "None" and markov_pred_size != "None" and sliding_pred_size == markov_pred_size:
-                    # Require 2-step trend confirmation to make sure we don't bet on single noise
-                    if len(history) >= 2:
-                        last_size_state = "Tai" if history[0].get("is_tai") else "Xiu"
-                        prev_size_state = "Tai" if history[1].get("is_tai") else "Xiu"
-                        
-                        if last_size_state == prev_size_state and last_size_state == ( "Tai" if sliding_pred_size == "Tai" else "Xiu" ):
-                            # Saturated trap check
-                            is_saturated_size = (sliding_pred_size == "Tai" and prob_tai_sliding >= 0.80) or (sliding_pred_size == "Xiu" and prob_xiu_sliding >= 0.80)
-                            if not is_saturated_size:
-                                size_decision = "MUA TÀI" if sliding_pred_size == "Tai" else "MUA XỈU"
-                                size_confidence = int((0.6 * (prob_tai_sliding if sliding_pred_size == "Tai" else prob_xiu_sliding) + 0.4 * (pred_tai if sliding_pred_size == "Tai" else 1.0 - pred_tai)) * 100)
-                                size_rationale = f"Đồng thuận xu hướng {'Tài' if sliding_pred_size == 'Tai' else 'Xỉu'}. Xác suất tổng hợp thực tế: {size_confidence}%."
-                            else:
-                                size_rationale = f"Không cược - Phát hiện bẫy {'Tài' if sliding_pred_size == 'Tai' else 'Xỉu'} đạt đỉnh (Xác suất trượt: {(prob_tai_sliding if sliding_pred_size == 'Tai' else prob_xiu_sliding)*100:.1f}%)."
-                        else:
-                            size_rationale = "Không cược - Chờ nhịp đồng nhất xu hướng."
+                    is_saturated_size = (sliding_pred_size == "Tai" and prob_tai_sliding >= T_sat_tai) or (sliding_pred_size == "Xiu" and prob_xiu_sliding >= T_sat_xiu)
+                    if not is_saturated_size:
+                        size_decision = "MUA TÀI" if sliding_pred_size == "Tai" else "MUA XỈU"
+                        # Dynamic Weighting Consensus: boost confidence by 1.05x (reduced from 1.15x)
+                        size_confidence = int((0.6 * (prob_tai_sliding if sliding_pred_size == "Tai" else prob_xiu_sliding) + 0.4 * (pred_tai if sliding_pred_size == "Tai" else 1.0 - pred_tai)) * 100 * 1.05)
+                        size_rationale = f"Đồng thuận xu hướng {'Tài' if sliding_pred_size == 'Tai' else 'Xỉu'}. Xác suất tổng hợp: {size_confidence}%."
+                    else:
+                        size_rationale = f"Không cược - Phát hiện bẫy {'Tài' if sliding_pred_size == 'Tai' else 'Xỉu'} đạt đỉnh (Xác suất trượt: {(prob_tai_sliding if sliding_pred_size == 'Tai' else prob_xiu_sliding)*100:.1f}%, Ngưỡng bão hòa 85%: {T_sat_tai*100:.1f}%)."
                 else:
                     size_rationale = "Không cược - Chỉ báo xu hướng và Markov không đồng thuận."
 
-            # Layer 4: Cross-Market Correlation Risk Filter
+            # Layer 4: Softened Cross-Market Correlation Risk Filter
             if size_decision == "MUA TÀI" and len(history) >= 5:
-                # If Parity has been all Chan for last 5 rounds, skip
                 if all(not r.get("is_le") for r in history[:5]):
-                    size_decision = "BỎ QUA"
-                    size_confidence = 50
-                    size_rationale = "Không cược - Phát hiện bẫy đảo chiều chéo (Parity 5 kỳ gần nhất toàn Chẵn)."
+                    size_confidence -= 15
+                    size_rationale += " (Cảnh báo tương quan: bệt Chẵn 5 kỳ. Giảm 15% tự tin)."
+                    if size_confidence < 55:
+                        size_decision = "BỎ QUA"
+                        size_rationale = "Không cược - Tránh rủi ro tương quan chéo (Tự tin rớt dưới 55%)."
             elif size_decision == "MUA XỈU" and len(history) >= 5:
-                # If Parity has been all Le for last 5 rounds, skip
                 if all(r.get("is_le") for r in history[:5]):
-                    size_decision = "BỎ QUA"
-                    size_confidence = 50
-                    size_rationale = "Không cược - Phát hiện bẫy đảo chiều chéo (Parity 5 kỳ gần nhất toàn Lẻ)."
+                    size_confidence -= 15
+                    size_rationale += " (Cảnh báo tương quan: bệt Lẻ 5 kỳ. Giảm 15% tự tin)."
+                    if size_confidence < 55:
+                        size_decision = "BỎ QUA"
+                        size_rationale = "Không cược - Tránh rủi ro tương quan chéo (Tự tin rớt dưới 55%)."
+
+            # 3. Main Trend Filter (Đảo chiều bệt trung lập):
+            if size_decision == "BỎ QUA" and not is_size_cooling and len(history) >= 6:
+                if all(r.get("is_tai") for r in history[:6]):
+                    size_decision = "MUA XỈU"
+                    size_confidence = 60
+                    size_rationale = "Bộ lọc xu hướng: Đảo chiều sớm do bệt Tài liên tiếp 6 kỳ."
+                elif all(not r.get("is_tai") for r in history[:6]):
+                    size_decision = "MUA TÀI"
+                    size_confidence = 60
+                    size_rationale = "Bộ lọc xu hướng: Đảo chiều sớm do bệt Xỉu liên tiếp 6 kỳ."
+
         # Adaptive Streak Safety Trap (Block betting when streaks reach historical max levels)
         T_streak_parity = max(4, max_le_streak)
         T_streak_size = max(4, max_tai_streak)
@@ -521,6 +699,11 @@ Bạn BẮT BUỘC phải trả về kết quả dưới dạng JSON object tuâ
             size_decision = "BỎ QUA"
             size_confidence = 50
             size_rationale = f"Không cược - Chuỗi bệt hiện tại ({active_tai_len} kỳ) đã chạm/vượt trần lịch sử dữ liệu mẫu ({T_streak_size} kỳ), rủi ro đảo chiều đạt đỉnh."
+
+        # 3.2. Giới hạn tự tin tối đa cho cả 2 thị trường ở mức 70% để tránh overconfidence
+        parity_confidence = min(parity_confidence, 70)
+        size_confidence = min(size_confidence, 70)
+
 
         return {
             "total_records": total_records,

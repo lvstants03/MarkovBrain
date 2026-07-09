@@ -5,6 +5,7 @@ import logging
 import time
 from typing import List, Dict, Any, Optional
 from src.config import config
+from src.core.money_management import MoneyManager, KELLY_HALF_STOPLOSS_DAILY_LIMIT
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,25 @@ class DataStore:
         self._history: List[Dict[str, Any]] = []
         self._seen_issues = set()
         self._predictions: Dict[str, Dict[str, Any]] = {}
+        
+        # Khoi tao so du va dat cuoc gia lap
+        self._real_balance = 0.0
+        self._demo_balance = 10000000.0
+        self._peak_demo_balance = 10000000.0
+        self._demo_bet_amount = 100000.0
+        self._demo_bets = {} # issue -> List of bets
+        self._http_cf_auth_token = ""
+        self._http_cookie = ""
+        self._demo_bet_strategy = "fixed"
+        self._parity_loss_streak = 0
+        self._size_loss_streak = 0
+        self._script_command = "none"
+        self._capital_collapses = []
+        # Daily loss tracking cho PA3 kelly_half_stoploss
+        self._parity_daily_loss_count = 0
+        self._size_daily_loss_count = 0
+        self._parity_pause_until: Optional[float] = None   # timestamp het tam dung
+        self._size_pause_until: Optional[float] = None
         
         # Cau hinh Redis tu bien moi truong
         self.redis_client = None
@@ -49,6 +69,59 @@ class DataStore:
                             raise e
             except Exception as e:
                 logger.error(f"Failed to connect to Redis after 5 attempts, falling back to RAM store: {e}")
+                
+        if not self.use_redis:
+            self._load_local_store()
+
+    def _save_local_store(self):
+        if self.use_redis:
+            return
+        try:
+            db_dir = os.path.dirname(os.path.abspath(__file__))
+            filepath = os.path.join(db_dir, "demo_store.json")
+            data = {
+                "demo_balance": self._demo_balance,
+                "peak_demo_balance": self._peak_demo_balance,
+                "demo_bet_amount": self._demo_bet_amount,
+                "demo_bet_strategy": self._demo_bet_strategy,
+                "parity_loss_streak": self._parity_loss_streak,
+                "size_loss_streak": self._size_loss_streak,
+                "demo_bets": self._demo_bets,
+                "capital_collapses": self._capital_collapses,
+                "parity_daily_loss_count": self._parity_daily_loss_count,
+                "size_daily_loss_count": self._size_daily_loss_count,
+                "parity_pause_until": self._parity_pause_until,
+                "size_pause_until": self._size_pause_until,
+            }
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"Error saving local demo store: {e}")
+
+    def _load_local_store(self):
+        if self.use_redis:
+            return
+        try:
+            db_dir = os.path.dirname(os.path.abspath(__file__))
+            filepath = os.path.join(db_dir, "demo_store.json")
+            if os.path.exists(filepath):
+                with open(filepath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self._demo_balance = data.get("demo_balance", 10000000.0)
+                    self._peak_demo_balance = data.get("peak_demo_balance", self._demo_balance)
+                    self._demo_bet_amount = data.get("demo_bet_amount", 100000.0)
+                    self._demo_bet_strategy = data.get("demo_bet_strategy", "fixed")
+                    self._parity_loss_streak = data.get("parity_loss_streak", 0)
+                    self._size_loss_streak = data.get("size_loss_streak", 0)
+                    self._demo_bets = data.get("demo_bets", {})
+                    self._capital_collapses = data.get("capital_collapses", [])
+                    self._parity_daily_loss_count = data.get("parity_daily_loss_count", 0)
+                    self._size_daily_loss_count = data.get("size_daily_loss_count", 0)
+                    self._parity_pause_until = data.get("parity_pause_until", None)
+                    self._size_pause_until = data.get("size_pause_until", None)
+                logger.info(f"Loaded local demo store configuration successfully: balance={self._demo_balance}, strategy={self._demo_bet_strategy}")
+        except Exception as e:
+            logger.error(f"Error loading local demo store: {e}")
 
     @property
     def key_records(self):
@@ -65,6 +138,70 @@ class DataStore:
     @property
     def key_prediction_issues(self):
         return f"lottery:{config.LOTTERY_CODE}:prediction_issues"
+
+    @property
+    def key_real_balance(self):
+        return f"lottery:{config.LOTTERY_CODE}:real_balance"
+
+    @property
+    def key_demo_balance(self):
+        return f"lottery:{config.LOTTERY_CODE}:demo_balance"
+
+    @property
+    def key_peak_demo_balance(self):
+        return f"lottery:{config.LOTTERY_CODE}:peak_demo_balance"
+
+    @property
+    def key_demo_bet_amount(self):
+        return f"lottery:{config.LOTTERY_CODE}:demo_bet_amount"
+
+    @property
+    def key_demo_bets(self):
+        return f"lottery:{config.LOTTERY_CODE}:demo_bets"
+
+    @property
+    def key_demo_bets_list(self):
+        return f"lottery:{config.LOTTERY_CODE}:demo_bets_list"
+
+    @property
+    def key_capital_collapses(self):
+        return f"lottery:{config.LOTTERY_CODE}:capital_collapses"
+
+    @property
+    def key_http_cf_auth_token(self):
+        return f"lottery:{config.LOTTERY_CODE}:http_cf_auth_token"
+
+    @property
+    def key_http_cookie(self):
+        return f"lottery:{config.LOTTERY_CODE}:http_cookie"
+
+    @property
+    def key_demo_bet_strategy(self):
+        return f"lottery:{config.LOTTERY_CODE}:demo_bet_strategy"
+
+    @property
+    def key_parity_loss_streak(self):
+        return f"lottery:{config.LOTTERY_CODE}:parity_loss_streak"
+
+    @property
+    def key_size_loss_streak(self):
+        return f"lottery:{config.LOTTERY_CODE}:size_loss_streak"
+
+    @property
+    def key_parity_daily_loss_count(self):
+        return f"lottery:{config.LOTTERY_CODE}:parity_daily_loss_count"
+
+    @property
+    def key_size_daily_loss_count(self):
+        return f"lottery:{config.LOTTERY_CODE}:size_daily_loss_count"
+
+    @property
+    def key_parity_pause_until(self):
+        return f"lottery:{config.LOTTERY_CODE}:parity_pause_until"
+
+    @property
+    def key_size_pause_until(self):
+        return f"lottery:{config.LOTTERY_CODE}:size_pause_until"
 
     def add_record(self, issue: str, numbers: List[int]) -> bool:
         # Them mot ky quay moi vao lich su. Tra ve True neu la ky moi, False neu bi trung
@@ -222,7 +359,8 @@ class DataStore:
                 for item in records_json:
                     if item:
                         rec = json.loads(item)
-                        if len(rec.get("numbers", [])) == 5:
+                        # Cho phép cả kỳ quay đầy đủ số (len=5) và kỳ nạp thống kê tính sẵn (len=0)
+                        if len(rec.get("numbers", [])) in (0, 5):
                             history.append(rec)
                 history.sort(key=lambda x: x["issue"], reverse=True)
                 return history[:limit]
@@ -230,7 +368,7 @@ class DataStore:
                 logger.error(f"Redis error in get_history: {e}")
                 
         with self._lock:
-            return [r for r in self._history if len(r.get("numbers", [])) == 5][:limit]
+            return [r for r in self._history if len(r.get("numbers", [])) in (0, 5)][:limit]
 
     def get_count(self) -> int:
         if self.use_redis:
@@ -244,7 +382,14 @@ class DataStore:
     def clear(self):
         if self.use_redis:
             try:
-                self.redis_client.delete(self.key_records, self.key_history_issues, self.key_predictions, self.key_prediction_issues)
+                self.redis_client.delete(
+                    self.key_records, 
+                    self.key_history_issues, 
+                    self.key_predictions, 
+                    self.key_prediction_issues,
+                    self.key_parity_loss_streak,
+                    self.key_size_loss_streak
+                )
             except Exception as e:
                 logger.error(f"Redis error in clear: {e}")
         with self._lock:
@@ -252,6 +397,9 @@ class DataStore:
             self._seen_issues.clear()
             if hasattr(self, "_predictions"):
                 self._predictions.clear()
+            self._parity_loss_streak = 0
+            self._size_loss_streak = 0
+            self._save_local_store()
 
     def add_prediction(self, issue: str, prediction_data: dict) -> bool:
         if not issue:
@@ -271,6 +419,7 @@ class DataStore:
             "time": time.strftime("%H:%M:%S %d/%m/%Y")
         }
         
+        added = False
         if self.use_redis:
             try:
                 existing = self.redis_client.hget(self.key_predictions, issue)
@@ -281,21 +430,39 @@ class DataStore:
                         removed = self.redis_client.rpop(self.key_prediction_issues)
                         if removed:
                             self.redis_client.hdel(self.key_predictions, removed)
-                    return True
-                return False
+                    added = True
             except Exception as e:
                 logger.error(f"Redis error in add_prediction: {e}")
                 
-        with self._lock:
-            if not hasattr(self, "_predictions"):
-                self._predictions = {}
-            if issue not in self._predictions:
-                self._predictions[issue] = record
-                if len(self._predictions) > 1000:
-                    oldest_key = min(self._predictions.keys(), key=lambda k: self._predictions[k]["timestamp"])
-                    self._predictions.pop(oldest_key, None)
-                return True
-            return False
+        else:
+            with self._lock:
+                if not hasattr(self, "_predictions"):
+                    self._predictions = {}
+                if issue not in self._predictions:
+                    self._predictions[issue] = record
+                    if len(self._predictions) > 1000:
+                        oldest_key = min(self._predictions.keys(), key=lambda k: self._predictions[k]["timestamp"])
+                        self._predictions.pop(oldest_key, None)
+                    added = True
+                    
+        if added:
+            # Tu dong dat cuoc gia lap neu khong phai "Khong co"
+            bet_amt = self.get_balances()["demo_bet_amount"]
+            pred_p = record.get("predicted_parity")
+            if pred_p and pred_p != "Không có":
+                dec_p = "MUA LẺ" if pred_p == "Le" else "MUA CHẴN"
+                result_p = self.place_demo_bet(issue, "parity", dec_p, bet_amt)
+                if result_p == "insufficient_balance":
+                    logger.warning(f"[DEMO] Skipped parity bet for {issue}: insufficient balance.")
+                
+            pred_s = record.get("predicted_size")
+            if pred_s and pred_s != "Không có":
+                dec_s = "MUA TÀI" if pred_s == "Tai" else "MUA XỈU"
+                result_s = self.place_demo_bet(issue, "size", dec_s, bet_amt)
+                if result_s == "insufficient_balance":
+                    logger.warning(f"[DEMO] Skipped size bet for {issue}: insufficient balance.")
+                    
+        return added
 
     def resolve_prediction(self, issue: str, numbers: List[int]) -> bool:
         if not issue or not numbers or len(numbers) != 5:
@@ -332,27 +499,32 @@ class DataStore:
             except Exception as e:
                 logger.error(f"Redis error in resolve_prediction: {e}")
                 
-        with self._lock:
-            if hasattr(self, "_predictions") and issue in self._predictions:
-                record = self._predictions[issue]
-                if record.get("status_parity") == "pending" or record.get("status_size") == "pending":
-                    record["actual_parity"] = actual_parity
-                    record["actual_size"] = actual_size
-                    
-                    pred_p = record.get("predicted_parity")
-                    if pred_p and pred_p != "Không có":
-                        record["status_parity"] = "win" if pred_p == actual_parity else "lose"
-                    else:
-                        record["status_parity"] = "ignored"
+        else:
+            with self._lock:
+                if hasattr(self, "_predictions") and issue in self._predictions:
+                    record = self._predictions[issue]
+                    if record.get("status_parity") == "pending" or record.get("status_size") == "pending":
+                        record["actual_parity"] = actual_parity
+                        record["actual_size"] = actual_size
                         
-                    pred_s = record.get("predicted_size")
-                    if pred_s and pred_s != "Không có":
-                        record["status_size"] = "win" if pred_s == actual_size else "lose"
-                    else:
-                        record["status_size"] = "ignored"
-                    updated = True
-                    
+                        pred_p = record.get("predicted_parity")
+                        if pred_p and pred_p != "Không có":
+                            record["status_parity"] = "win" if pred_p == actual_parity else "lose"
+                        else:
+                            record["status_parity"] = "ignored"
+                            
+                        pred_s = record.get("predicted_size")
+                        if pred_s and pred_s != "Không có":
+                            record["status_size"] = "win" if pred_s == actual_size else "lose"
+                        else:
+                            record["status_size"] = "ignored"
+                        updated = True
+                        
+        if updated:
+            self.resolve_demo_bets(issue, numbers)
+            
         return updated
+
 
     def get_prediction_history(self, limit: int = 100) -> List[Dict[str, Any]]:
         if self.use_redis:
@@ -462,5 +634,591 @@ class DataStore:
             if not hasattr(self, "_socket_logs"):
                 return []
             return self._socket_logs[:limit]
+
+    def get_balances(self) -> Dict[str, Any]:
+        if self.use_redis:
+            try:
+                real = self.redis_client.get(self.key_real_balance)
+                demo = self.redis_client.get(self.key_demo_balance)
+                peak = self.redis_client.get(self.key_peak_demo_balance)
+                bet_amt = self.redis_client.get(self.key_demo_bet_amount)
+                strategy = self.redis_client.get(self.key_demo_bet_strategy)
+                
+                # Support decoding bytes response from Redis
+                strategy_str = "fixed"
+                if strategy:
+                    try:
+                        strategy_str = strategy.decode('utf-8')
+                    except AttributeError:
+                        strategy_str = str(strategy)
+                
+                return {
+                    "real_balance": float(real) if real else 0.0,
+                    "demo_balance": float(demo) if demo else 10000000.0,
+                    "peak_demo_balance": float(peak) if peak else 10000000.0,
+                    "demo_bet_amount": float(bet_amt) if bet_amt else 100000.0,
+                    "demo_bet_strategy": strategy_str
+                }
+            except Exception as e:
+                logger.error(f"Redis error in get_balances: {e}")
+                
+        with self._lock:
+            return {
+                "real_balance": self._real_balance,
+                "demo_balance": self._demo_balance,
+                "peak_demo_balance": self._peak_demo_balance,
+                "demo_bet_amount": self._demo_bet_amount,
+                "demo_bet_strategy": self._demo_bet_strategy
+            }
+
+    def update_demo_balance(self, balance: float):
+        if self.use_redis:
+            try:
+                self.redis_client.set(self.key_demo_balance, balance)
+                self.redis_client.set(self.key_peak_demo_balance, balance)
+                return True
+            except Exception as e:
+                logger.error(f"Redis error in update_demo_balance: {e}")
+        with self._lock:
+            self._demo_balance = balance
+            self._peak_demo_balance = balance
+            self._save_local_store()
+        return True
+
+    def set_demo_bet_strategy(self, strategy: str):
+        if self.use_redis:
+            try:
+                self.redis_client.set(self.key_demo_bet_strategy, strategy)
+                return True
+            except Exception as e:
+                logger.error(f"Redis error in set_demo_bet_strategy: {e}")
+        with self._lock:
+            self._demo_bet_strategy = strategy
+            self._save_local_store()
+        return True
+
+    def get_loss_streaks(self) -> Dict[str, int]:
+        if self.use_redis:
+            try:
+                p_streak = self.redis_client.get(self.key_parity_loss_streak)
+                s_streak = self.redis_client.get(self.key_size_loss_streak)
+                return {
+                    "parity": int(p_streak) if p_streak else 0,
+                    "size": int(s_streak) if s_streak else 0
+                }
+            except Exception as e:
+                logger.error(f"Redis error in get_loss_streaks: {e}")
+                
+        with self._lock:
+            return {
+                "parity": self._parity_loss_streak,
+                "size": self._size_loss_streak
+            }
+
+    def update_loss_streak(self, market_type: str, is_win: bool):
+        if self.use_redis:
+            try:
+                streak_key = self.key_parity_loss_streak if market_type == "parity" else self.key_size_loss_streak
+                daily_key = self.key_parity_daily_loss_count if market_type == "parity" else self.key_size_daily_loss_count
+                if is_win:
+                    self.redis_client.set(streak_key, 0)
+                else:
+                    self.redis_client.incr(streak_key)
+                    self.redis_client.incr(daily_key)
+                return True
+            except Exception as e:
+                logger.error(f"Redis error in update_loss_streak: {e}")
+                
+        with self._lock:
+            if market_type == "parity":
+                if is_win:
+                    self._parity_loss_streak = 0
+                else:
+                    self._parity_loss_streak += 1
+                    self._parity_daily_loss_count += 1
+            else:
+                if is_win:
+                    self._size_loss_streak = 0
+                else:
+                    self._size_loss_streak += 1
+                    self._size_daily_loss_count += 1
+            self._save_local_store()
+        return True
+
+    def update_real_balance(self, balance: float):
+        if self.use_redis:
+            try:
+                self.redis_client.set(self.key_real_balance, balance)
+                return True
+            except Exception as e:
+                logger.error(f"Redis error in update_real_balance: {e}")
+                
+        with self._lock:
+            self._real_balance = balance
+        return True
+
+    def reset_demo_balance(self):
+        if self.use_redis:
+            try:
+                self.redis_client.set(self.key_demo_balance, 10000000.0)
+                self.redis_client.set(self.key_peak_demo_balance, 10000000.0)
+                self.redis_client.delete(
+                    self.key_demo_bets, self.key_demo_bets_list, self.key_capital_collapses,
+                    self.key_parity_daily_loss_count, self.key_size_daily_loss_count,
+                    self.key_parity_pause_until, self.key_size_pause_until
+                )
+                self.redis_client.set(self.key_parity_loss_streak, 0)
+                self.redis_client.set(self.key_size_loss_streak, 0)
+                return True
+            except Exception as e:
+                logger.error(f"Redis error in reset_demo_balance: {e}")
+                
+        with self._lock:
+            self._demo_balance = 10000000.0
+            self._peak_demo_balance = 10000000.0
+            self._demo_bets.clear()
+            self._capital_collapses.clear()
+            self._parity_loss_streak = 0
+            self._size_loss_streak = 0
+            self._parity_daily_loss_count = 0
+            self._size_daily_loss_count = 0
+            self._parity_pause_until = None
+            self._size_pause_until = None
+            self._save_local_store()
+        return True
+
+    def clear_demo_bets(self):
+        if self.use_redis:
+            try:
+                demo_bal = float(self.redis_client.get(self.key_demo_balance) or 10000000.0)
+                self.redis_client.set(self.key_peak_demo_balance, demo_bal)
+                self.redis_client.delete(
+                    self.key_demo_bets, self.key_demo_bets_list, self.key_capital_collapses,
+                    self.key_parity_daily_loss_count, self.key_size_daily_loss_count,
+                    self.key_parity_pause_until, self.key_size_pause_until
+                )
+                self.redis_client.set(self.key_parity_loss_streak, 0)
+                self.redis_client.set(self.key_size_loss_streak, 0)
+                return True
+            except Exception as e:
+                logger.error(f"Redis error in clear_demo_bets: {e}")
+                
+        with self._lock:
+            self._peak_demo_balance = self._demo_balance
+            self._demo_bets.clear()
+            self._capital_collapses.clear()
+            self._parity_loss_streak = 0
+            self._size_loss_streak = 0
+            self._parity_daily_loss_count = 0
+            self._size_daily_loss_count = 0
+            self._parity_pause_until = None
+            self._size_pause_until = None
+            self._save_local_store()
+        return True
+
+    def set_demo_bet_amount(self, amount: float):
+        if self.use_redis:
+            try:
+                self.redis_client.set(self.key_demo_bet_amount, amount)
+                return True
+            except Exception as e:
+                logger.error(f"Redis error in set_demo_bet_amount: {e}")
+                
+        with self._lock:
+            self._demo_bet_amount = amount
+            self._save_local_store()
+        return True
+
+    def get_demo_bets(self, limit: int = 50) -> List[Dict[str, Any]]:
+        if self.use_redis:
+            try:
+                issues = self.redis_client.lrange(self.key_demo_bets_list, 0, limit - 1)
+                if not issues:
+                    return []
+                bets_json = self.redis_client.hmget(self.key_demo_bets, issues)
+                all_bets = []
+                for x in bets_json:
+                    if x:
+                        all_bets.extend(json.loads(x))
+                all_bets.sort(key=lambda x: x["issue"], reverse=True)
+                return all_bets[:limit]
+            except Exception as e:
+                logger.error(f"Redis error in get_demo_bets: {e}")
+                
+        with self._lock:
+            flat_bets = []
+            for issue, bets in self._demo_bets.items():
+                flat_bets.extend(bets)
+            flat_bets.sort(key=lambda x: x["issue"], reverse=True)
+            return flat_bets[:limit]
+
+    def get_daily_loss_info(self) -> Dict[str, Any]:
+        """Lay thong tin daily loss count va pause_until cho ca 2 thi truong."""
+        now = time.time()
+        if self.use_redis:
+            try:
+                p_daily = self.redis_client.get(self.key_parity_daily_loss_count)
+                s_daily = self.redis_client.get(self.key_size_daily_loss_count)
+                p_pause = self.redis_client.get(self.key_parity_pause_until)
+                s_pause = self.redis_client.get(self.key_size_pause_until)
+                
+                p_daily_val = int(p_daily) if p_daily else 0
+                s_daily_val = int(s_daily) if s_daily else 0
+                p_pause_val = float(p_pause) if p_pause else None
+                s_pause_val = float(s_pause) if s_pause else None
+                
+                p_expired = p_pause_val is not None and now >= p_pause_val
+                s_expired = s_pause_val is not None and now >= s_pause_val
+                
+                if p_expired or s_expired:
+                    current_demo = float(self.redis_client.get(self.key_demo_balance) or 10000000.0)
+                    self.redis_client.set(self.key_peak_demo_balance, current_demo)
+                    
+                if p_expired:
+                    self.redis_client.set(self.key_parity_daily_loss_count, 0)
+                    self.redis_client.delete(self.key_parity_pause_until)
+                    p_daily_val = 0
+                    p_pause_val = None
+                    
+                if s_expired:
+                    self.redis_client.set(self.key_size_daily_loss_count, 0)
+                    self.redis_client.delete(self.key_size_pause_until)
+                    s_daily_val = 0
+                    s_pause_val = None
+                    
+                return {
+                    "parity_daily_loss_count": p_daily_val,
+                    "size_daily_loss_count": s_daily_val,
+                    "parity_pause_until": p_pause_val,
+                    "size_pause_until": s_pause_val,
+                }
+            except Exception as e:
+                logger.error(f"Redis error in get_daily_loss_info: {e}")
+                
+        with self._lock:
+            p_expired = self._parity_pause_until is not None and now >= self._parity_pause_until
+            s_expired = self._size_pause_until is not None and now >= self._size_pause_until
+            
+            if p_expired or s_expired:
+                self._peak_demo_balance = self._demo_balance
+                
+            if p_expired:
+                self._parity_daily_loss_count = 0
+                self._parity_pause_until = None
+                
+            if s_expired:
+                self._size_daily_loss_count = 0
+                self._size_pause_until = None
+                
+            if p_expired or s_expired:
+                self._save_local_store()
+                
+            return {
+                "parity_daily_loss_count": self._parity_daily_loss_count,
+                "size_daily_loss_count": self._size_daily_loss_count,
+                "parity_pause_until": self._parity_pause_until,
+                "size_pause_until": self._size_pause_until,
+            }
+
+    def place_demo_bet(self, issue: str, market_type: str, prediction: str, amount: float):
+        if not issue or not prediction or prediction in ("Khong co", "BO QUA", "Kh\u00f4ng c\u00f3", "B\u1ecf QUA"):
+            return False
+
+        balances = self.get_balances()
+        base_amount = balances["demo_bet_amount"]
+        strategy = balances["demo_bet_strategy"]
+        current_balance = balances["demo_balance"]
+
+        loss_streaks = self.get_loss_streaks()
+        streak = loss_streaks.get(market_type, 0)
+
+        daily_info = self.get_daily_loss_info()
+        daily_loss_count = daily_info.get(f"{market_type}_daily_loss_count", 0)
+        pause_until = daily_info.get(f"{market_type}_pause_until", None)
+
+        # Lay win rate thuc te tu lich su du doan
+        prediction_stats = self.get_prediction_stats()
+        win_rate = __import__("src.core.money_management", fromlist=["get_effective_win_rate"]).get_effective_win_rate(
+            prediction_stats, market_type
+        )
+
+        final_amount = MoneyManager.calculate_bet(
+            strategy=strategy,
+            base_amount=base_amount,
+            current_balance=current_balance,
+            loss_streak=streak,
+            daily_loss_count=daily_loss_count,
+            pause_until=pause_until,
+            win_rate=win_rate,
+        )
+
+        # PA3: bo qua ky nay do dang bi tam dung
+        if final_amount == 0.0:
+            logger.info(f"[place_demo_bet] Ky {issue} ({market_type}): bi tam dung hoac het gioi han ngay. Bo qua.")
+            return "paused"
+
+        # --- OVERDRAFT GUARD: skip bet if balance is insufficient ---
+        current_balance = balances["demo_balance"]
+        if final_amount > current_balance:
+            logger.warning(
+                f"[OVERDRAFT] Skipping {market_type} bet for issue {issue}: "
+                f"required {final_amount} > balance {current_balance}"
+            )
+            self.log_capital_collapse(
+                issue=issue,
+                market_type=market_type,
+                loss_streak=streak,
+                amount_required=final_amount,
+                balance_current=current_balance,
+                base_amount=base_amount,
+                strategy=strategy
+            )
+            return "insufficient_balance"
+            
+        bet = {
+            "issue": issue,
+            "timestamp": time.time(),
+            "time": time.strftime("%H:%M:%S %d/%m/%Y"),
+            "market_type": market_type,
+            "prediction": prediction,
+            "amount": final_amount,
+            "status": "pending",
+            "win_amount": 0.0,
+            "balance_after": 0.0
+        }
+        
+        if self.use_redis:
+            try:
+                current_demo = float(self.redis_client.get(self.key_demo_balance) or 10000000.0)
+                # Double-check under Redis read
+                if final_amount > current_demo:
+                    logger.warning(f"[OVERDRAFT][Redis] Skipping bet for {issue}, insufficient balance.")
+                    self.log_capital_collapse(
+                        issue=issue,
+                        market_type=market_type,
+                        loss_streak=streak,
+                        amount_required=final_amount,
+                        balance_current=current_demo,
+                        base_amount=base_amount,
+                        strategy=strategy
+                    )
+                    return "insufficient_balance"
+                new_demo = current_demo - final_amount
+                self.redis_client.set(self.key_demo_balance, new_demo)
+                
+                existing_json = self.redis_client.hget(self.key_demo_bets, issue)
+                existing_bets = json.loads(existing_json) if existing_json else []
+                bet["balance_after"] = new_demo
+                existing_bets.append(bet)
+                
+                self.redis_client.hset(self.key_demo_bets, issue, json.dumps(existing_bets))
+                if not existing_json:
+                    self.redis_client.lpush(self.key_demo_bets_list, issue)
+                return True
+            except Exception as e:
+                logger.error(f"Redis error in place_demo_bet: {e}")
+                
+        with self._lock:
+            self._demo_balance = self._demo_balance - final_amount
+            bet["balance_after"] = self._demo_balance
+            if issue not in self._demo_bets:
+                self._demo_bets[issue] = []
+            self._demo_bets[issue].append(bet)
+            self._save_local_store()
+        return True
+
+    def resolve_demo_bets(self, issue: str, numbers: List[int]):
+        if not issue or not numbers or len(numbers) != 5:
+            return False
+            
+        total = sum(numbers)
+        actual_parity = "MUA LẺ" if total % 2 != 0 else "MUA CHẴN"
+        actual_size = "MUA TÀI" if total > 22 else "MUA XỈU"
+        
+        updated = False
+        if self.use_redis:
+            try:
+                existing_json = self.redis_client.hget(self.key_demo_bets, issue)
+                if existing_json:
+                    existing_bets = json.loads(existing_json)
+                    current_demo = float(self.redis_client.get(self.key_demo_balance) or 10000000.0)
+                    peak_demo = float(self.redis_client.get(self.key_peak_demo_balance) or current_demo)
+                    
+                    for bet in existing_bets:
+                        if bet.get("status") == "pending":
+                            actual = actual_parity if bet["market_type"] == "parity" else actual_size
+                            is_win = (bet["prediction"] == actual)
+                            if is_win:
+                                bet["status"] = "win"
+                                bet["win_amount"] = bet["amount"] * 1.95
+                                current_demo += bet["win_amount"]
+                            else:
+                                bet["status"] = "lose"
+                                bet["win_amount"] = 0.0
+                                
+                            self.update_loss_streak(bet["market_type"], is_win)
+                            bet["balance_after"] = current_demo
+                            updated = True
+                            
+                    if updated:
+                        # Update peak
+                        if current_demo > peak_demo:
+                            peak_demo = current_demo
+                            self.redis_client.set(self.key_peak_demo_balance, peak_demo)
+                            
+                        # Check 25% drawdown
+                        if current_demo <= peak_demo * 0.75:
+                            pause_ts = time.time() + 10 * 60
+                            self.redis_client.set(self.key_parity_pause_until, pause_ts)
+                            self.redis_client.set(self.key_size_pause_until, pause_ts)
+                            logger.warning(f"[DRAWDOWN] Demo balance {current_demo} dropped by 25% or more from peak {peak_demo}. Pausing both markets for 10m.")
+                            
+                        self.redis_client.set(self.key_demo_balance, current_demo)
+                        self.redis_client.hset(self.key_demo_bets, issue, json.dumps(existing_bets))
+                return updated
+            except Exception as e:
+                logger.error(f"Redis error in resolve_demo_bets: {e}")
+                
+        with self._lock:
+            if issue in self._demo_bets:
+                for bet in self._demo_bets[issue]:
+                    if bet.get("status") == "pending":
+                        actual = actual_parity if bet["market_type"] == "parity" else actual_size
+                        is_win = (bet["prediction"] == actual)
+                        if is_win:
+                            bet["status"] = "win"
+                            bet["win_amount"] = bet["amount"] * 1.95
+                            self._demo_balance += bet["win_amount"]
+                        else:
+                            bet["status"] = "lose"
+                            bet["win_amount"] = 0.0
+                            
+                        self.update_loss_streak(bet["market_type"], is_win)
+                        bet["balance_after"] = self._demo_balance
+                        updated = True
+                if updated:
+                    # Update peak
+                    if self._demo_balance > self._peak_demo_balance:
+                        self._peak_demo_balance = self._demo_balance
+                        
+                    # Check 25% drawdown
+                    if self._demo_balance <= self._peak_demo_balance * 0.75:
+                        pause_ts = time.time() + 10 * 60
+                        self._parity_pause_until = pause_ts
+                        self._size_pause_until = pause_ts
+                        logger.warning(f"[DRAWDOWN] Demo balance {self._demo_balance} dropped by 25% or more from peak {self._peak_demo_balance}. Pausing both markets for 10m.")
+                        
+                    self._save_local_store()
+        return updated
+
+    def update_http_headers(self, cf_auth_token: str, cookie: Optional[str] = None):
+        if self.use_redis:
+            try:
+                self.redis_client.set(self.key_http_cf_auth_token, cf_auth_token)
+                if cookie:
+                    self.redis_client.set(self.key_http_cookie, cookie)
+                return True
+            except Exception as e:
+                logger.error(f"Redis error in update_http_headers: {e}")
+                
+        with self._lock:
+            self._http_cf_auth_token = cf_auth_token
+            if cookie:
+                self._http_cookie = cookie
+        return True
+
+    def get_http_headers(self) -> Dict[str, str]:
+        if self.use_redis:
+            try:
+                cf_auth = self.redis_client.get(self.key_http_cf_auth_token)
+                cookie = self.redis_client.get(self.key_http_cookie)
+                return {
+                    "cf_auth_token": cf_auth or "",
+                    "cookie": cookie or ""
+                }
+            except Exception as e:
+                logger.error(f"Redis error in get_http_headers: {e}")
+                
+        with self._lock:
+            return {
+                "cf_auth_token": self._http_cf_auth_token,
+                "cookie": self._http_cookie
+            }
+
+    def set_script_command(self, cmd: str):
+        if self.use_redis:
+            try:
+                self.redis_client.set(f"lottery:{config.LOTTERY_CODE}:script_command", cmd)
+                return True
+            except Exception as e:
+                logger.error(f"Redis error in set_script_command: {e}")
+        with self._lock:
+            self._script_command = cmd
+        return True
+
+    def get_script_command(self) -> str:
+        if self.use_redis:
+            try:
+                key = f"lottery:{config.LOTTERY_CODE}:script_command"
+                cmd = self.redis_client.get(key)
+                if cmd:
+                    cmd_str = cmd.decode('utf-8') if hasattr(cmd, 'decode') else str(cmd)
+                    self.redis_client.set(key, "none")
+                    return cmd_str
+                return "none"
+            except Exception as e:
+                logger.error(f"Redis error in get_script_command: {e}")
+        with self._lock:
+            cmd = self._script_command
+            self._script_command = "none"
+            return cmd
+
+    def log_capital_collapse(self, issue: str, market_type: str, loss_streak: int, amount_required: float, balance_current: float, base_amount: float, strategy: str):
+        collapse = {
+            "timestamp": time.time(),
+            "time": time.strftime("%H:%M:%S %d/%m/%Y"),
+            "issue": issue,
+            "market_type": market_type,
+            "loss_streak": loss_streak,
+            "amount_required": amount_required,
+            "balance_current": balance_current,
+            "base_amount": base_amount,
+            "strategy": strategy
+        }
+        if self.use_redis:
+            try:
+                self.redis_client.lpush(self.key_capital_collapses, json.dumps(collapse))
+                self.redis_client.ltrim(self.key_capital_collapses, 0, 49)
+                return True
+            except Exception as e:
+                logger.error(f"Redis error in log_capital_collapse: {e}")
+        with self._lock:
+            self._capital_collapses.insert(0, collapse)
+            self._capital_collapses = self._capital_collapses[:50]
+            self._save_local_store()
+        return True
+
+    def get_capital_collapses(self, limit: int = 50) -> List[Dict[str, Any]]:
+        if self.use_redis:
+            try:
+                collapses = self.redis_client.lrange(self.key_capital_collapses, 0, limit - 1)
+                return [json.loads(c) for c in collapses if c]
+            except Exception as e:
+                logger.error(f"Redis error in get_capital_collapses: {e}")
+                return []
+        with self._lock:
+            return self._capital_collapses[:limit]
+
+    def clear_capital_collapses(self):
+        if self.use_redis:
+            try:
+                self.redis_client.delete(self.key_capital_collapses)
+                return True
+            except Exception as e:
+                logger.error(f"Redis error in clear_capital_collapses: {e}")
+        with self._lock:
+            self._capital_collapses.clear()
+            self._save_local_store()
+        return True
 
 store = DataStore()
