@@ -50,22 +50,46 @@ async def get_statistics(limit: int = Query(default=500, ge=1, le=10000)):
         if scraper_curr and scraper_curr > last_issue:
             next_issue = scraper_curr
             
-        ai_parity = stats.get("ai_recommendation", {}).get("parity", {}).get("decision", "BỎ QUA")
-        ai_size = stats.get("ai_recommendation", {}).get("size", {}).get("decision", "BỎ QUA")
+        existing_pred = store.get_prediction(next_issue) if next_issue else None
         
-        predicted_parity = "Le" if ai_parity == "MUA LẺ" else "Chan" if ai_parity == "MUA CHẴN" else "Không có"
-        predicted_size = "Tai" if ai_size == "MUA TÀI" else "Xiu" if ai_size == "MUA XỈU" else "Không có"
-        
-        parity_conf = stats.get("ai_recommendation", {}).get("parity", {}).get("confidence", 50)
-        size_conf = stats.get("ai_recommendation", {}).get("size", {}).get("confidence", 50)
-        
-        if predicted_parity != "Không có" or predicted_size != "Không có":
+        if existing_pred:
+            # Override stats with existing saved prediction to avoid UI mismatch
+            p_pred = existing_pred.get("predicted_parity", "Không có")
+            s_pred = existing_pred.get("predicted_size", "Không có")
+            
+            stats["ai_recommendation"] = {
+                "engine": existing_pred.get("engine", "Saved Prediction"),
+                "parity": {
+                    "decision": "MUA LẺ" if p_pred == "Le" else "MUA CHẴN" if p_pred == "Chan" else "BỎ QUA",
+                    "confidence": existing_pred.get("parity_confidence") or 50,
+                    "rationale": existing_pred.get("parity_rationale") or "Dự đoán đã được ghi nhận trong cơ sở dữ liệu."
+                },
+                "size": {
+                    "decision": "MUA TÀI" if s_pred == "Tai" else "MUA XỈU" if s_pred == "Xiu" else "BỎ QUA",
+                    "confidence": existing_pred.get("size_confidence") or 50,
+                    "rationale": existing_pred.get("size_rationale") or "Dự đoán đã được ghi nhận trong cơ sở dữ liệu."
+                }
+            }
+        else:
+            ai_parity = stats.get("ai_recommendation", {}).get("parity", {}).get("decision", "BỎ QUA")
+            ai_size = stats.get("ai_recommendation", {}).get("size", {}).get("decision", "BỎ QUA")
+            
+            predicted_parity = "Le" if ai_parity == "MUA LẺ" else "Chan" if ai_parity == "MUA CHẴN" else "Không có"
+            predicted_size = "Tai" if ai_size == "MUA TÀI" else "Xiu" if ai_size == "MUA XỈU" else "Không có"
+            
+            parity_conf = stats.get("ai_recommendation", {}).get("parity", {}).get("confidence", 50)
+            size_conf = stats.get("ai_recommendation", {}).get("size", {}).get("confidence", 50)
+            
+            # Always save the prediction to history (even if BỎ QUA) to reset streaks correctly and show on UI
             store.add_prediction(next_issue, {
                 "predicted_parity": predicted_parity,
                 "predicted_size": predicted_size,
                 "parity_confidence": parity_conf if predicted_parity != "Không có" else None,
                 "size_confidence": size_conf if predicted_size != "Không có" else None,
-                "total_records_at_prediction": stats.get("total_records", 0)
+                "total_records_at_prediction": stats.get("total_records", 0),
+                "engine": stats.get("ai_recommendation", {}).get("engine", "Heuristics (3-Layer)"),
+                "parity_rationale": stats.get("ai_recommendation", {}).get("parity", {}).get("rationale", ""),
+                "size_rationale": stats.get("ai_recommendation", {}).get("size", {}).get("rationale", "")
             })
             
     prediction_stats = store.get_prediction_stats()
@@ -581,25 +605,30 @@ async def get_balance_info():
     p_pause = daily_info.get("parity_pause_until", None)
     s_pause = daily_info.get("size_pause_until", None)
 
-    # Win rate thuc te tu lich su
-    prediction_stats = store.get_prediction_stats()
-    p_win_rate = get_effective_win_rate(prediction_stats, "parity")
-    s_win_rate = get_effective_win_rate(prediction_stats, "size")
+    # Determine if market is stable
+    is_stable = store.is_market_stable()
+
+    # Win rate thuc te tu 15 ky gan nhat
+    prediction_stats_recent = store.get_prediction_stats_recent(15)
+    p_win_rate = get_effective_win_rate(prediction_stats_recent, "parity")
+    s_win_rate = get_effective_win_rate(prediction_stats_recent, "size")
 
     # Tinh next bet dung MoneyManager
     p_bet = MoneyManager.calculate_bet(
         strategy=strategy, base_amount=base_bet, current_balance=demo_balance,
-        loss_streak=p_streak, daily_loss_count=p_daily, pause_until=p_pause, win_rate=p_win_rate
+        loss_streak=p_streak, daily_loss_count=p_daily, pause_until=p_pause, win_rate=p_win_rate,
+        is_stable=is_stable
     )
     s_bet = MoneyManager.calculate_bet(
         strategy=strategy, base_amount=base_bet, current_balance=demo_balance,
-        loss_streak=s_streak, daily_loss_count=s_daily, pause_until=s_pause, win_rate=s_win_rate
+        loss_streak=s_streak, daily_loss_count=s_daily, pause_until=s_pause, win_rate=s_win_rate,
+        is_stable=is_stable
     )
 
     max_streak = MoneyManager.get_max_streak_tolerated(strategy, demo_balance, base_bet, s_win_rate)
 
-    is_bankrupt = demo_balance <= 0 or (p_bet <= 0 and s_bet <= 0 and strategy not in ("kelly_half_stoploss",))
-    if strategy not in ("kelly_half_stoploss",):
+    is_bankrupt = demo_balance <= 0 or (p_bet <= 0 and s_bet <= 0 and strategy not in ("kelly_half_stoploss", "kelly_half_martingale_x3"))
+    if strategy not in ("kelly_half_stoploss", "kelly_half_martingale_x3"):
         is_bankrupt = is_bankrupt or (p_bet > demo_balance and s_bet > demo_balance)
 
     collapses = store.get_capital_collapses(limit=50)
@@ -607,11 +636,13 @@ async def get_balance_info():
     # Risk info panel day du
     risk_info_parity = MoneyManager.get_risk_info(
         strategy=strategy, current_balance=demo_balance, base_amount=base_bet,
-        win_rate=p_win_rate, loss_streak=p_streak, daily_loss_count=p_daily, pause_until=p_pause
+        win_rate=p_win_rate, loss_streak=p_streak, daily_loss_count=p_daily, pause_until=p_pause,
+        is_stable=is_stable
     )
     risk_info_size = MoneyManager.get_risk_info(
         strategy=strategy, current_balance=demo_balance, base_amount=base_bet,
-        win_rate=s_win_rate, loss_streak=s_streak, daily_loss_count=s_daily, pause_until=s_pause
+        win_rate=s_win_rate, loss_streak=s_streak, daily_loss_count=s_daily, pause_until=s_pause,
+        is_stable=is_stable
     )
 
     return {
@@ -682,8 +713,8 @@ async def update_demo_config(config_data: DemoConfigUpdate):
     balances = store.get_balances()
     current_balance = balances.get("demo_balance", 0.0)
     current_strategy = balances.get("demo_bet_strategy", "fixed")
-    prediction_stats = store.get_prediction_stats()
-    win_rate = get_effective_win_rate(prediction_stats, "size")
+    prediction_stats_recent = store.get_prediction_stats_recent(15)
+    win_rate = get_effective_win_rate(prediction_stats_recent, "size")
 
     recommended_bet = MoneyManager.get_recommended_base(
         strategy=current_strategy,

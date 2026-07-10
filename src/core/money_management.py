@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # --- Hang so ---
 KELLY_WIN_RATE_DEFAULT = 0.58      # Win rate mac dinh neu chua du du lieu
-KELLY_WIN_RATE_MIN_SAMPLES = 10   # So mau toi thieu de tinh WR thuc te
+KELLY_WIN_RATE_MIN_SAMPLES = 5   # So mau toi thieu de tinh WR thuc te
 KELLY_PAYOUT = 0.95               # He so lai khi thang (tinh theo 1.95x tren cuoc)
 KELLY_HALF_STOPLOSS_DAILY_LIMIT = 3  # Gioi han so ky thua/ngay (PA3)
 KELLY_HALF_STOPLOSS_PAUSE_HOURS = 24 # So gio tam dung sau khi cham gioi han (PA3)
@@ -24,6 +24,7 @@ STRATEGY_LABELS = {
     "fixed_fractional_3": "Bao toan - Fixed Fractional 3%",
     "kelly_third": "Can bang - Kelly 1/3 (~5.3%)",
     "kelly_half_stoploss": "Tang toc - Kelly 1/2 + Stop-loss (8%)",
+    "kelly_half_martingale_x3": "Tối ưu - Dynamic Kelly & Martingale",
 }
 
 ALL_STRATEGIES = list(STRATEGY_LABELS.keys())
@@ -73,6 +74,7 @@ class MoneyManager:
         daily_loss_count: int,
         pause_until: Optional[float],
         win_rate: float = KELLY_WIN_RATE_DEFAULT,
+        is_stable: bool = True,
     ) -> float:
         """
         Tra ve so tien dat cuoc cuoi cung (VND).
@@ -86,6 +88,7 @@ class MoneyManager:
             daily_loss_count: so ky da thua trong 24h (cho thi truong nay, chi PA3)
             pause_until: timestamp het thoi gian tam dung (chi PA3), None = khong bi dung
             win_rate: win rate thuc te [0,1]
+            is_stable: thi truong co dang on dinh khong (WR 30 ky >= 53%)
         """
         if current_balance <= 0:
             return 0.0
@@ -120,6 +123,41 @@ class MoneyManager:
             k_half = k_full / 2.0
             fraction = min(k_half, 0.12)
             amount = current_balance * fraction
+            return max(math.floor(amount / 1000) * 1000, 1000.0)
+
+        if strategy == "kelly_half_martingale_x3":
+            # 1. Kiem tra suc khoe thi truong (30 ky)
+            # Neu thi truong hon loan, tam dung dat cuoc (tra ve 0.0) de bao ve von
+            if not is_stable:
+                logger.info("[kelly_half_martingale_x3] Thi truong hon loan (WR 30 ky < 53%). Tam dung dat cuoc.")
+                return 0.0
+                
+            # 2. Quyet dinh fraction dua tren Sliding Win Rate (15 ky)
+            if win_rate >= 0.60:
+                # Kelly chu dong: 1/2 Kelly, max 10%
+                k_full = compute_kelly_fraction(win_rate)
+                fraction = min(k_full / 2.0, 0.10)
+            elif win_rate >= 0.55:
+                # Kelly vua phai: 1/3 Kelly, max 6%
+                k_full = compute_kelly_fraction(win_rate)
+                fraction = min(k_full / 3.0, 0.06)
+            elif win_rate >= 0.50:
+                # Binh thuong: Phai bao toan, 3% von
+                fraction = 0.03
+            else:
+                # Bao thu: 1.5% von + Gap thep x3, gioi han max streak = 3
+                fraction = 0.015
+                
+            base_bet = current_balance * fraction
+            base_bet = max(base_bet, 1000.0)
+            
+            # Giao thuc gap thep gioi han (chi ap dung cho phan vung WR < 50%)
+            if win_rate < 0.50:
+                multiplier = 3 ** min(loss_streak, 3)
+                amount = base_bet * multiplier
+            else:
+                amount = base_bet
+                
             return max(math.floor(amount / 1000) * 1000, 1000.0)
 
         # Fallback ve fixed
@@ -169,17 +207,47 @@ class MoneyManager:
                 return int(math.floor(math.log(ratio, 3.0)))
             return 0
 
-        if strategy in ("fixed_fractional_3", "kelly_third", "kelly_half_stoploss"):
-            # Percentage-based: von giam dan theo ham mu, ly thuyet vo han
-            # Nhung tinh den khi amount < 1000 VND thi coi nhu het
+        if strategy in ("fixed_fractional_3", "kelly_third", "kelly_half_stoploss", "kelly_half_martingale_x3"):
             if strategy == "fixed_fractional_3":
                 loss_rate = 0.03
             elif strategy == "kelly_third":
                 k = compute_kelly_fraction(win_rate) / 3.0
                 loss_rate = min(k, 0.10)
-            else:
+            elif strategy == "kelly_half_stoploss":
                 k = compute_kelly_fraction(win_rate) / 2.0
                 loss_rate = min(k, 0.12)
+            else:
+                # Voi kelly_half_martingale_x3, tinh uoc tinh thua theo cac kieu phan bo WR
+                # De an toan, ta gia lap chuoi thua lien tiep
+                if current_balance <= 1000:
+                    return 0
+                bal = current_balance
+                streak = 0
+                losses = 0
+                while bal >= 1000 and losses < 100:
+                    frac = 0.015
+                    if win_rate >= 0.60:
+                        frac = min(compute_kelly_fraction(win_rate) / 2.0, 0.10)
+                    elif win_rate >= 0.55:
+                        frac = min(compute_kelly_fraction(win_rate) / 3.0, 0.06)
+                    elif win_rate >= 0.50:
+                        frac = 0.03
+                    bet = bal * frac
+                    bet = max(math.floor(bet / 1000) * 1000, 1000.0)
+                    # neu < 50% co gap thep
+                    if win_rate < 0.50:
+                        mult = 3 ** min(streak, 3)
+                        bet_final = bet * mult
+                    else:
+                        bet_final = bet
+                    if bet_final > bal:
+                        break
+                    bal -= bet_final
+                    losses += 1
+                    streak += 1
+                    if streak > 3:
+                        streak = 0
+                return losses
 
             if loss_rate <= 0:
                 return 9999
@@ -230,6 +298,27 @@ class MoneyManager:
                 "note": f"1/2 Kelly ({k_half*100:.1f}% von) + Stop-loss {KELLY_HALF_STOPLOSS_DAILY_LIMIT} thua/24h"
             }
 
+        if strategy == "kelly_half_martingale_x3":
+            k_full = compute_kelly_fraction(win_rate)
+            if win_rate >= 0.60:
+                k_half = min(k_full / 2.0, 0.10)
+                safe = int(balance * k_half / 1000) * 1000
+                note = f"Active Kelly ({k_half*100:.1f}% von) dua tren WR trượt {win_rate*100:.1f}% >= 60%"
+            elif win_rate >= 0.55:
+                k_third = min(k_full / 3.0, 0.06)
+                safe = int(balance * k_third / 1000) * 1000
+                note = f"Moderate Kelly ({k_third*100:.1f}% von) dua tren WR trượt {win_rate*100:.1f}%"
+            elif win_rate >= 0.50:
+                safe = int(balance * 0.03 / 1000) * 1000
+                note = f"Passive Kelly (3.0% von) dua tren WR trượt {win_rate*100:.1f}%"
+            else:
+                safe = int(balance * 0.015 / 1000) * 1000
+                note = f"Bao thu (1.5% von) + Gấp x3 (max 3x) dua tren WR trượt {win_rate*100:.1f}% < 50%"
+            return {
+                "recommended": safe,
+                "note": note
+            }
+
         if strategy == "martingale_x3":
             return {
                 "k3": int(balance * 2 / (3**3 - 1)),
@@ -253,6 +342,7 @@ class MoneyManager:
         loss_streak: int,
         daily_loss_count: int,
         pause_until: Optional[float],
+        is_stable: bool = True,
     ) -> dict:
         """
         Tra ve day du thong tin rui ro de hien thi trong Frontend panel.
@@ -265,6 +355,7 @@ class MoneyManager:
             daily_loss_count=daily_loss_count,
             pause_until=pause_until,
             win_rate=win_rate,
+            is_stable=is_stable,
         )
 
         pct_of_balance = (next_bet / current_balance * 100) if current_balance > 0 else 0.0

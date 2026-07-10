@@ -416,7 +416,10 @@ class DataStore:
             "status_parity": "pending",
             "status_size": "pending",
             "timestamp": time.time(),
-            "time": time.strftime("%H:%M:%S %d/%m/%Y")
+            "time": time.strftime("%H:%M:%S %d/%m/%Y"),
+            "engine": prediction_data.get("engine", "Heuristics (3-Layer)"),
+            "parity_rationale": prediction_data.get("parity_rationale", ""),
+            "size_rationale": prediction_data.get("size_rationale", "")
         }
         
         added = False
@@ -522,9 +525,28 @@ class DataStore:
                         
         if updated:
             self.resolve_demo_bets(issue, numbers)
+            try:
+                self.write_market_health_log()
+            except Exception as e:
+                logger.error(f"Error writing market health log: {e}")
             
         return updated
 
+
+    def get_prediction(self, issue: str) -> Optional[Dict[str, Any]]:
+        if self.use_redis:
+            try:
+                record_json = self.redis_client.hget(self.key_predictions, issue)
+                if record_json:
+                    return json.loads(record_json)
+                return None
+            except Exception as e:
+                logger.error(f"Redis error in get_prediction: {e}")
+                return None
+        with self._lock:
+            if hasattr(self, "_predictions") and issue in self._predictions:
+                return self._predictions[issue]
+            return None
 
     def get_prediction_history(self, limit: int = 100) -> List[Dict[str, Any]]:
         if self.use_redis:
@@ -596,6 +618,170 @@ class DataStore:
             },
             "overall_win_rate": round((parity_wins + size_wins) / (total_parity + total_size), 4) if (total_parity + total_size) > 0 else 0.0
         }
+
+    def get_prediction_stats_recent(self, limit: int = 15) -> dict:
+        history = self.get_prediction_history(limit=1000)
+        
+        # Parity
+        parity_wins = 0
+        parity_losses = 0
+        parity_total = 0
+        for item in history:
+            if item.get("total_records_at_prediction", 11) <= 10:
+                continue
+            sp = item.get("status_parity")
+            if sp in ("win", "lose"):
+                if sp == "win":
+                    parity_wins += 1
+                else:
+                    parity_losses += 1
+                parity_total += 1
+                if parity_total >= limit:
+                    break
+                    
+        # Size
+        size_wins = 0
+        size_losses = 0
+        size_total = 0
+        for item in history:
+            if item.get("total_records_at_prediction", 11) <= 10:
+                continue
+            ss = item.get("status_size")
+            if ss in ("win", "lose"):
+                if ss == "win":
+                    size_wins += 1
+                else:
+                    size_losses += 1
+                size_total += 1
+                if size_total >= limit:
+                    break
+                    
+        win_rate_parity = round(parity_wins / parity_total, 4) if parity_total > 0 else 0.0
+        win_rate_size = round(size_wins / size_total, 4) if size_total > 0 else 0.0
+        
+        return {
+            "parity": {
+                "wins": parity_wins,
+                "losses": parity_losses,
+                "total": parity_total,
+                "win_rate": win_rate_parity
+            },
+            "size": {
+                "wins": size_wins,
+                "losses": size_losses,
+                "total": size_total,
+                "win_rate": win_rate_size
+            }
+        }
+
+    def is_market_stable(self) -> bool:
+        history = self.get_prediction_history(limit=1000)
+        resolved_items = []
+        for item in history:
+            if item.get("total_records_at_prediction", 11) <= 10:
+                continue
+            sp = item.get("status_parity")
+            ss = item.get("status_size")
+            if sp in ("win", "lose") or ss in ("win", "lose"):
+                resolved_items.append(item)
+            if len(resolved_items) >= 30:
+                break
+                
+        if len(resolved_items) < 30:
+            return True
+            
+        total_bets = 0
+        wins = 0
+        for item in resolved_items:
+            sp = item.get("status_parity")
+            ss = item.get("status_size")
+            if sp in ("win", "lose"):
+                total_bets += 1
+                if sp == "win":
+                    wins += 1
+            if ss in ("win", "lose"):
+                total_bets += 1
+                if ss == "win":
+                    wins += 1
+                    
+        win_rate_pct = (wins / total_bets * 100) if total_bets > 0 else 0.0
+        return win_rate_pct >= 53.0
+
+    def write_market_health_log(self) -> None:
+        history = self.get_prediction_history(limit=1000)
+        resolved_items = []
+        for item in history:
+            if item.get("total_records_at_prediction", 11) <= 10:
+                continue
+            sp = item.get("status_parity")
+            ss = item.get("status_size")
+            if sp in ("win", "lose") or ss in ("win", "lose"):
+                resolved_items.append(item)
+            if len(resolved_items) >= 30:
+                break
+                
+        log_file_path = os.path.join(os.getcwd(), "market_health_30.log")
+        
+        if len(resolved_items) < 30:
+            header = (
+                "Khối 30 kỳ gần nhất: -\n"
+                "Hiệu suất thắng: -\n"
+                "Phạm Vi Kỳ\tThời Gian\tSố Lượt Cược\tTỷ Lệ Thắng\tTrạng Thái\n"
+            )
+            content = header + "Chưa có đủ 30 kỳ để phân tích. Để quan sát ghi nhận lại những thời điểm hỗn loạn mà hệ thống chúng ta hay gặp phải.\n"
+            with open(log_file_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            return
+            
+        end_issue = resolved_items[0]["issue"]
+        start_issue = resolved_items[-1]["issue"]
+        issue_range = f"{start_issue}-{end_issue}"
+        
+        total_bets = 0
+        wins = 0
+        for item in resolved_items:
+            sp = item.get("status_parity")
+            ss = item.get("status_size")
+            if sp in ("win", "lose"):
+                total_bets += 1
+                if sp == "win":
+                    wins += 1
+            if ss in ("win", "lose"):
+                total_bets += 1
+                if ss == "win":
+                    wins += 1
+                    
+        win_rate_pct = (wins / total_bets * 100) if total_bets > 0 else 0.0
+        status = "Ổn định" if win_rate_pct >= 53.0 else "Hỗn loạn"
+        
+        existing_rows = []
+        if os.path.exists(log_file_path):
+            try:
+                with open(log_file_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                for line in lines:
+                    parts = line.strip().split("\t")
+                    if len(parts) >= 5 and parts[0] != "Phạm Vi Kỳ":
+                        existing_rows.append(line.strip())
+            except Exception:
+                pass
+                
+        current_time_str = time.strftime("%H:%M:%S %d/%m/%Y")
+        new_row = f"{issue_range}\t{current_time_str}\t{total_bets}\t{win_rate_pct:.1f}%\t{status}"
+        
+        if not any(row.startswith(issue_range) for row in existing_rows):
+            existing_rows.append(new_row)
+            
+        header = (
+            f"Khối 30 kỳ gần nhất: {start_issue} - {end_issue}\n"
+            f"Hiệu suất thắng: {wins}/{total_bets} ({win_rate_pct:.1f}%)\n"
+            "Phạm Vi Kỳ\tThời Gian\tSố Lượt Cược\tTỷ Lệ Thắng\tTrạng Thái\n"
+        )
+        
+        table_content = "\n".join(existing_rows[-100:]) + "\n"
+        
+        with open(log_file_path, "w", encoding="utf-8") as f:
+            f.write(header + table_content)
 
     def log_connection_event(self, event: str, message: str) -> bool:
         log_entry = {
@@ -936,10 +1122,13 @@ class DataStore:
         daily_loss_count = daily_info.get(f"{market_type}_daily_loss_count", 0)
         pause_until = daily_info.get(f"{market_type}_pause_until", None)
 
-        # Lay win rate thuc te tu lich su du doan
-        prediction_stats = self.get_prediction_stats()
+        # Determine if market is stable (for the 30-period check)
+        is_stable = self.is_market_stable()
+
+        # Lay win rate thuc te tu 15 ky gan nhat cho cac chien thuat Kelly
+        prediction_stats_recent = self.get_prediction_stats_recent(15)
         win_rate = __import__("src.core.money_management", fromlist=["get_effective_win_rate"]).get_effective_win_rate(
-            prediction_stats, market_type
+            prediction_stats_recent, market_type
         )
 
         final_amount = MoneyManager.calculate_bet(
@@ -950,6 +1139,7 @@ class DataStore:
             daily_loss_count=daily_loss_count,
             pause_until=pause_until,
             win_rate=win_rate,
+            is_stable=is_stable,
         )
 
         # PA3: bo qua ky nay do dang bi tam dung
