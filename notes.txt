@@ -1,4 +1,0 @@
-
-Không cược - Chuỗi bệt hiện tại (10 kỳ) đã chạm/vượt trần lịch sử dữ liệu mẫu (10 kỳ), rủi ro đảo chiều đạt đỉnh.
-Đáng lẻ phải là lịch sử dữ liệu mẫu 9 kỳ 
-1. Cải thiện phát hiện thị trường răng cưa khi lựa chọn đánh lẻ hoặc xỉu cũng phải dựa vào xác xuất tổng thể để đưa vào. Giả sử thị trường răng cưa đánh đảo chiều mua chẵn đi nhưng xác xuất chẵn thấp hơn lẻ phải thực hiện đánh lẻ 

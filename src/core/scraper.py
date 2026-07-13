@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import random
 import time
 from typing import Optional
 import websockets
@@ -24,6 +23,9 @@ class WebSocketScraper:
         self.last_received_time = time.time()
         self.connection_status = "disconnected"
 
+        # ===== THÊM MỚI =====
+        self._reconnect_attempts = 0
+        self._max_reconnect_attempts = 3
 
     async def start(self):
         self.is_running = True
@@ -31,7 +33,6 @@ class WebSocketScraper:
         self._fetch_task = asyncio.create_task(self._fetch_loop())
         logger.info("Scraper worker started")
         store.log_connection_event("reconnecting", "Khởi chạy hệ thống quét bot...")
-        # Nap lich su ngay lap tuc khi khoi dong
         asyncio.create_task(self._bootstrap_history())
 
     async def _bootstrap_history(self):
@@ -144,15 +145,14 @@ class WebSocketScraper:
         domain, token = self._get_api_auth()
         if not token:
             return 0.0
-            
+
         url = f"https://{domain}/server/user/getBalance?refresh=1"
         origin_url = f"https://{domain}"
-        
-        # Doc HTTP headers va cookie tu store neu co
+
         stored_http = store.get_http_headers()
         cf_auth_token = stored_http.get("cf_auth_token") or f"Bearer.{token}"
         cookie = stored_http.get("cookie")
-        
+
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
@@ -167,7 +167,7 @@ class WebSocketScraper:
         }
         if cookie:
             headers["cookie"] = cookie
-        
+
         try:
             response = await asyncio.to_thread(
                 requests.get,
@@ -181,7 +181,6 @@ class WebSocketScraper:
                     if payload.get("code") == 1:
                         data = payload.get("data")
                         if isinstance(data, dict):
-                            # total_money la tong so du chinh xac nhat (bao gom ca tien khuyen mai)
                             val = data.get("total_money") or data.get("total_asset") or data.get("money") or data.get("balance") or 0.0
                             if str(val).strip() == "":
                                 val = 0.0
@@ -195,7 +194,9 @@ class WebSocketScraper:
                             logger.info(f"[{config.LOTTERY_CODE}] Successfully fetched real balance: {balance} VND")
                             return balance
                     elif payload.get("code") in (1004, 1005) or "hết hạn" in str(payload.get("msg", "")).lower():
-                        logger.warning(f"[{config.LOTTERY_CODE}] Session expired (code {payload.get('code')}). Token needs to be updated!")
+                        logger.warning(f"[{config.LOTTERY_CODE}] Session expired (code {payload.get('code')}). Sending reload command.")
+                        store.set_script_command("reload")
+                        return 0.0
             logger.warning(f"Failed to fetch balance, status code: {response.status_code}, response: {response.text[:200]}")
         except Exception as e:
             logger.error(f"Error fetching user balance: {e}")
@@ -205,18 +206,22 @@ class WebSocketScraper:
         while self.is_running:
             if self.fetch_url:
                 await self.trigger_fetch()
-            # Tu dong cap nhat so du thuc te
             await self.fetch_user_balance()
-            # Cho den chu ky tiếp theo
             await asyncio.sleep(self.fetch_interval)
 
     async def _ping_loop(self, ws):
         try:
-            # Cho 15 giay de ket noi on dinh truoc khi ping lan dau
             await asyncio.sleep(15)
             while self.is_running and self.connection_status == "connected":
                 logger.info("Sending heartbeat ping '{\"type\":\"ping\"}' to WebSocket")
-                await ws.send(json.dumps({"type": "ping"}))
+                try:
+                    await ws.send(json.dumps({"type": "ping"}))
+                except websockets.ConnectionClosed as e:
+                    logger.warning(f"Ping failed: connection closed ({e})")
+                    break
+                except Exception as e:
+                    logger.warning(f"Ping failed: {e}")
+                    break
                 await asyncio.sleep(15)
         except asyncio.CancelledError:
             pass
@@ -226,12 +231,10 @@ class WebSocketScraper:
     async def _monitor_loop(self, ws):
         try:
             while self.is_running and self.connection_status == "connected":
-                # Kiem tra neu qua 40s khong nhan duoc message nao
-                if time.time() - self.last_received_time > 40:
-                    logger.warning("No WebSocket messages received for 40 seconds. Forcing reconnect...")
-                    store.log_connection_event("disconnected", "Không nhận được gói tin nào từ WebSocket trong 40 giây. Bắt buộc kết nối lại.")
-                    await ws.close()
-                    break
+                if time.time() - self.last_received_time > 120:
+                    logger.warning("No WebSocket messages received for 120 seconds. Resetting monitor but keeping connection.")
+                    store.log_connection_event("disconnected", "Không nhận được gói tin nào từ WebSocket trong 120 giây, giữ kết nối và chờ...")
+                    self.last_received_time = time.time()
                 await asyncio.sleep(5)
         except asyncio.CancelledError:
             pass
@@ -241,6 +244,7 @@ class WebSocketScraper:
     async def _loop(self):
         retry_delay = 2.0
         max_delay = 60.0
+        conn_start_time = 0
         while self.is_running:
             self.connection_status = "connecting"
             try:
@@ -254,29 +258,28 @@ class WebSocketScraper:
                 except:
                     pass
 
-                # Dynamic signature matching for websockets 16.0 and older
                 import inspect
                 sig = inspect.signature(websockets.connect)
-                
+
                 connect_kwargs = {
                     "ping_interval": 20,
                     "ping_timeout": 10
                 }
-                
+
                 headers_dict = {
                     "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
                     "Cache-Control": "no-cache",
                     "Pragma": "no-cache"
                 }
                 user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                
+
                 if "additional_headers" in sig.parameters:
                     connect_kwargs["additional_headers"] = headers_dict
                     if "user_agent_header" in sig.parameters:
                         connect_kwargs["user_agent_header"] = user_agent
                     else:
                         headers_dict["User-Agent"] = user_agent
-                        
+
                     if "origin" in sig.parameters:
                         connect_kwargs["origin"] = origin
                     else:
@@ -286,25 +289,26 @@ class WebSocketScraper:
                     fallback_headers["User-Agent"] = user_agent
                     fallback_headers["Origin"] = origin
                     connect_kwargs["extra_headers"] = fallback_headers
-                
+
                 async with websockets.connect(self.ws_url, **connect_kwargs) as ws:
+                    # ===== RESET BIẾN ĐẾM KHI KẾT NỐI THÀNH CÔNG =====
+                    self._reconnect_attempts = 0
                     logger.info("WebSocket connected successfully")
                     clean_url = self.ws_url.split('/ws/')[0] if '/ws/' in self.ws_url else self.ws_url
                     store.log_connection_event("connected", f"Kết nối thành công đến WebSocket: {clean_url}")
                     self.connection_status = "connected"
                     self.last_received_time = time.time()
                     conn_start_time = time.time()
-                    
-                    # Chay song song gui ping va giam sat
+
                     ping_task = asyncio.create_task(self._ping_loop(ws))
                     monitor_task = asyncio.create_task(self._monitor_loop(ws))
-                    
+
                     try:
                         async for message in ws:
                             if not self.is_running:
                                 break
                             self.last_received_time = time.time()
-                            if message != "h": # Bỏ qua heartbeat rỗng từ server nếu có
+                            if message != "h":
                                 await self._process_message(message)
                     finally:
                         self.connection_status = "disconnected"
@@ -319,26 +323,35 @@ class WebSocketScraper:
                 err_msg = str(e) or "Không có phản hồi từ máy chủ."
                 logger.error(f"WebSocket connection error or disconnected: {err_msg}")
                 store.log_connection_event("disconnected", f"Mất kết nối hoặc lỗi: {err_msg}")
+
+                # ===== TĂNG BIẾN ĐẾM VÀ GỬI RELOAD NẾU VƯỢT NGƯỠNG =====
+                self._reconnect_attempts += 1
+                if self._reconnect_attempts > self._max_reconnect_attempts:
+                    logger.warning(f"Reconnect failed {self._reconnect_attempts} times. Sending reload command to browser.")
+                    store.set_script_command("reload")
+                    # Reset biến đếm sau khi gửi reload để tránh gửi liên tục nếu vẫn fail,
+                    # nhưng nếu vẫn fail, lần tiếp theo sẽ lại tăng và gửi reload.
+                    self._reconnect_attempts = 0
+                else:
+                    logger.info(f"Reconnect attempt {self._reconnect_attempts} failed, will retry.")
+
                 await self._run_fallback_simulation()
-                
-            # Đánh giá độ ổn định kết nối để quyết định giãn thời gian chờ reconnect
+
             is_stable = conn_start_time > 0 and (time.time() - conn_start_time > 15)
             if is_stable:
                 retry_delay = 2.0
             else:
                 retry_delay = min(retry_delay * 2, max_delay)
-                
+
             logger.info(f"Waiting {retry_delay}s before reconnecting...")
             store.log_connection_event("reconnecting", f"Đang thử kết nối lại sau {retry_delay} giây...")
             await asyncio.sleep(retry_delay)
-
 
     async def _process_message(self, message: str):
         try:
             data = json.loads(message)
             msg_type = data.get("type")
-            
-            # Case 1: lottery_result message
+
             if msg_type == "lottery_result":
                 lottery = data.get("data", {}).get("lottery", {})
                 if lottery.get("id") == config.LOTTERY_ID or lottery.get("code") == config.LOTTERY_CODE:
@@ -354,8 +367,6 @@ class WebSocketScraper:
                         if added:
                             logger.info(f"[{config.LOTTERY_CODE}] Received new real issue {target_issue}: {numbers}")
                             asyncio.create_task(self.fetch_user_balance())
-                            
-            # Case 2: lottery_info or other periodic messages containing lists of lotteries
             else:
                 data_field = data.get("data") or {}
                 if isinstance(data_field, dict):
@@ -364,23 +375,24 @@ class WebSocketScraper:
                             for item in val:
                                 if isinstance(item, dict):
                                     if item.get("id") == config.LOTTERY_ID or item.get("code") == config.LOTTERY_CODE:
-                                         last_issue = str(item.get("last_issue") or "")
-                                         issue = str(item.get("issue") or "")
-                                         target_issue = last_issue if last_issue else issue
-                                         digits = item.get("open_numbers_formatted") or []
-                                         numbers = [int(x) for x in digits if str(x).isdigit()]
-                                         if len(numbers) >= 5:
-                                             numbers = numbers[-5:]
-                                         if target_issue and len(numbers) == 5:
-                                             added = store.add_record(target_issue, numbers)
-                                             if added:
-                                                 logger.info(f"[{config.LOTTERY_CODE}] Received new real issue {target_issue}: {numbers}")
-                                                 asyncio.create_task(self.fetch_user_balance())
+                                        last_issue = str(item.get("last_issue") or "")
+                                        issue = str(item.get("issue") or "")
+                                        target_issue = last_issue if last_issue else issue
+                                        digits = item.get("open_numbers_formatted") or []
+                                        numbers = [int(x) for x in digits if str(x).isdigit()]
+                                        if len(numbers) >= 5:
+                                            numbers = numbers[-5:]
+                                        if target_issue and len(numbers) == 5:
+                                            added = store.add_record(target_issue, numbers)
+                                            if added:
+                                                logger.info(f"[{config.LOTTERY_CODE}] Received new real issue {target_issue}: {numbers}")
+                                                asyncio.create_task(self.fetch_user_balance())
         except Exception as e:
             logger.error(f"Failed to process websocket message: {str(e)}. Raw: {message[:200]}")
+
     async def fetch_latest_info(self) -> int:
         from urllib.parse import urlparse, parse_qs
-        
+
         domain = config.TARGET_DOMAIN
         token = ""
         try:
@@ -393,14 +405,12 @@ class WebSocketScraper:
         except Exception as e:
             logger.error(f"Error parsing ws_url: {e}")
 
-        # Fetch tu ca lich su (drawResult) va ky hien tai (getCurrentLotteryInfo)
         url_draw = f"https://{domain}/server/lottery/drawResult?lottery_id={config.LOTTERY_ID}&page=1&limit=100"
-        # getCurrentLotteryInfo khong can token, luon hoat dong
         url_info = f"https://{domain}/server/lottery/getCurrentLotteryInfo?lottery_id={config.LOTTERY_ID}"
         if token:
             url_draw += f"&token={token}"
         urls = [url_info, url_draw]
-        
+
         origin_url = f"https://{domain}" if domain else f"https://{config.TARGET_DOMAIN}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -418,9 +428,9 @@ class WebSocketScraper:
         if token:
             headers["token"] = token
             headers["Authorization"] = f"Bearer {token}"
-            
+
         imported_count = 0
-        
+
         def extract_records(data) -> list:
             records = []
             if isinstance(data, list):
@@ -435,13 +445,12 @@ class WebSocketScraper:
                 numbers = [int(x) for x in digits if str(x).strip().isdigit()]
                 if len(numbers) >= 5:
                     numbers = numbers[-5:]
-                
+
                 if len(numbers) == 5:
-                    # Neu co last_issue (completed), thi open_numbers_formatted thuoc ve no, tranh lech 1 ky.
                     target_issue = last_issue if last_issue else issue
                     if target_issue:
                         records.append((target_issue, numbers))
-                
+
                 for k, v in data.items():
                     if k not in ("issue", "last_issue", "open_numbers_formatted", "openNumbers"):
                         records.extend(extract_records(v))
@@ -450,12 +459,11 @@ class WebSocketScraper:
         for url in urls:
             try:
                 logger.info(f"Auto-fetching from: {url}")
-                # Dung headers co token cho drawResult, khong token cho getCurrentLotteryInfo
                 req_headers = headers.copy()
                 if "drawResult" not in url:
                     req_headers.pop("token", None)
                     req_headers.pop("Authorization", None)
-                    
+
                 response = await asyncio.to_thread(
                     requests.get,
                     url,
@@ -465,7 +473,7 @@ class WebSocketScraper:
                 if response.status_code != 200:
                     logger.warning(f"Fetch failed for {url} with status code: {response.status_code}")
                     continue
-                    
+
                 payload = response.json()
                 extracted = extract_records(payload)
                 for issue, numbers in extracted:
@@ -473,8 +481,7 @@ class WebSocketScraper:
                     if added:
                         logger.info(f"[{config.LOTTERY_CODE}] Auto-imported draw result: {issue} -> {numbers}")
                         imported_count += 1
-                
-                # Trích xuất dữ liệu lịch sử thống kê Tài/Xỉu, Chẵn/Lẻ từ statisticsInfo
+
                 try:
                     statistics_info = {}
                     if isinstance(payload, dict):
@@ -483,7 +490,7 @@ class WebSocketScraper:
                             statistics_info = data_obj.get("statisticsInfo") or {}
                         else:
                             statistics_info = payload.get("statisticsInfo") or {}
-                            
+
                     if isinstance(statistics_info, dict) and statistics_info:
                         total_sum = statistics_info.get("total_sum")
                         if isinstance(total_sum, dict):
@@ -492,7 +499,7 @@ class WebSocketScraper:
                                 big_small_list = data_list.get("bigSmall", [])
                                 odd_even_list = data_list.get("oddEven", [])
                                 logger.info(f"[{config.LOTTERY_CODE}] statisticsInfo found: {len(big_small_list)} bigSmall, {len(odd_even_list)} oddEven entries")
-                                
+
                                 issue_data = {}
                                 for item in big_small_list:
                                     if isinstance(item, dict):
@@ -509,7 +516,7 @@ class WebSocketScraper:
                                                 issue_data[iss]["is_le"] = res == "odd"
                                             else:
                                                 issue_data[iss] = {"is_le": res == "odd", "is_tai": False}
-                                
+
                                 stats_imported = 0
                                 for iss, info in issue_data.items():
                                     if "is_tai" in info and "is_le" in info:
@@ -527,11 +534,10 @@ class WebSocketScraper:
                     logger.error(f"Error parsing statisticsInfo: {ex}")
             except Exception as e:
                 logger.error(f"Error fetching from {url}: {e}")
-                
+
         return imported_count
 
     async def _run_fallback_simulation(self):
-        # Che do gia lap da bi tat theo yeu cau. Chi log thong bao.
         logger.info("Simulation mode is disabled. No simulated data will be generated.")
 
 scraper = WebSocketScraper()

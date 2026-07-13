@@ -315,31 +315,186 @@ def test_drawdown_pause_protection():
 
 def test_ping_pong_overall_probability_override():
     from src.database.store import store
+    from src.config import config
     store.clear()
     store.clear_demo_bets()
     
-    # Construct a history of 35 alternating rounds
-    history = []
-    for i in range(35):
-        val = (i % 2 == 0)
-        history.append({
-            "issue": f"20260701{i:03d}",
-            "numbers": [1, 2, 3, 4, 5] if val else [2, 2, 2, 2, 2],
-            "total": 15 if val else 10,
-            "is_tai": True,
-            "is_le": val
-        })
+    # Tạm thời vô hiệu hóa Gemini để test logic Heuristics thuần túy
+    old_key = getattr(config, "GEMINI_API_KEY", "")
+    config.GEMINI_API_KEY = ""
+    
+    try:
+        # Construct a history of 101 alternating rounds
+        history = []
+        for i in range(101):
+            val = (i % 2 == 0)
+            history.append({
+                "issue": f"20260701{i:03d}",
+                "numbers": [1, 2, 3, 4, 5] if val else [2, 2, 2, 2, 2],
+                "total": 15 if val else 10,
+                "is_tai": True,
+                "is_le": val
+            })
 
-    # Run analysis
-    from src.core.analyzer import ProbabilityAnalyzer
-    res = ProbabilityAnalyzer.analyze(history)
+        # Run analysis
+        from src.core.analyzer import ProbabilityAnalyzer
+        res = ProbabilityAnalyzer.analyze(history)
+        
+        # Standard ping-pong predicts: not history[0]["is_le"] = False (Chan) -> "MUA CHẴN".
+        # BUT overall probability of Le is higher than Chan due to override index.
+        # Therefore, the override changes it to "MUA LẺ" and rationale contains "hiệu chỉnh theo XS".
+        
+        assert res["ai_recommendation"]["parity"]["decision"] == "MUA LẺ"
+        assert "hiệu chỉnh theo XS" in res["ai_recommendation"]["parity"]["rationale"]
+    finally:
+        config.GEMINI_API_KEY = old_key
+
+
+def test_recent_win_rate_and_health_log():
+    import os
+    store = DataStore()
+    store.clear()
     
-    # Standard ping-pong predicts: not history[0]["is_le"] = False (Chan) -> "MUA CHẴN".
-    # BUT overall probability of Le (8/15) is higher than Chan (7/15).
-    # Therefore, the override changes it to "MUA LẺ" and rationale contains "Hiệu chỉnh".
+    # 1. Add predictions to test get_prediction_stats_recent
+    # We will add 20 predictions, 15 win, 5 lose
+    for i in range(25):
+        issue = f"20260702{i:03d}"
+        is_win = (i >= 10)  # last 15 are wins
+        
+        # We need total_records_at_prediction > 10 to not be skipped
+        pred_data = {
+            "predicted_parity": "Le",
+            "predicted_size": "Tai",
+            "parity_confidence": 85,
+            "size_confidence": 90,
+            "total_records_at_prediction": 15
+        }
+        store.add_prediction(issue, pred_data)
+        
+        # Resolve prediction
+        if is_win:
+            store.resolve_prediction(issue, [5, 5, 5, 5, 5])  # sum = 25 (Tai, Le) -> Win
+        else:
+            store.resolve_prediction(issue, [2, 2, 2, 2, 2])  # sum = 10 (Xiu, Chan) -> Lose
+
+    # Get recent stats (should evaluate the 15 most recent resolved items)
+    stats_recent = store.get_prediction_stats_recent(15)
+    # The 15 most recent should be all wins (since i from 10 to 24 are all wins)
+    assert stats_recent["parity"]["total"] == 15
+    assert stats_recent["parity"]["wins"] == 15
+    assert stats_recent["parity"]["win_rate"] == 1.0
+
+    # Test market stability
+    assert store.is_market_stable() is True
+
+    # Test market health log file creation
+    log_file_path = os.path.join(os.getcwd(), "market_health_30.log")
+    if os.path.exists(log_file_path):
+        os.remove(log_file_path)
+
+    store.write_market_health_log()
+    assert os.path.exists(log_file_path) is True
     
-    assert res["ai_recommendation"]["parity"]["decision"] == "MUA LẺ"
-    assert "Hiệu chỉnh theo xác suất tổng thể" in res["ai_recommendation"]["parity"]["rationale"]
+    with open(log_file_path, "r", encoding="utf-8") as f:
+        log_content = f.read()
+    assert "Khối 30 kỳ gần nhất" in log_content
+
+    # Clean up log
+    if os.path.exists(log_file_path):
+        os.remove(log_file_path)
+
+
+def test_kelly_half_martingale_x3_calculation():
+    from src.core.money_management import MoneyManager
+    
+    # 1. Test is_stable = False -> returns 0.0
+    bet = MoneyManager.calculate_bet(
+        strategy="kelly_half_martingale_x3",
+        base_amount=10000.0,
+        current_balance=1000000.0,
+        loss_streak=0,
+        daily_loss_count=0,
+        pause_until=None,
+        win_rate=0.60,
+        is_stable=False
+    )
+    assert bet == 0.0
+
+    # 2. Test WR >= 60% (Active Kelly) -> k_half = Kelly 1/2, max 10%
+    # For WR=0.65, payout=0.95: Kelly = (0.65 * 1.95 - 1) / 0.95 = 0.281 -> Kelly 1/2 = 0.14 -> max 10% (0.10)
+    # Bet should be 1,000,000 * 0.10 = 100,000
+    bet_active = MoneyManager.calculate_bet(
+        strategy="kelly_half_martingale_x3",
+        base_amount=10000.0,
+        current_balance=1000000.0,
+        loss_streak=0,
+        daily_loss_count=0,
+        pause_until=None,
+        win_rate=0.65,
+        is_stable=True
+    )
+    assert bet_active == 100000.0
+
+    # 3. Test WR < 50% (Conservative, no Martingale in Normal Mode)
+    # For WR=0.48: base_bet = 1,000,000 * 0.015 = 15,000
+    # streak = 0 -> 15,000
+    bet_m0 = MoneyManager.calculate_bet(
+        strategy="kelly_half_martingale_x3",
+        base_amount=10000.0,
+        current_balance=1000000.0,
+        loss_streak=0,
+        daily_loss_count=0,
+        pause_until=None,
+        win_rate=0.48,
+        is_stable=True
+    )
+    assert bet_m0 == 15000.0
+
+    # streak = 1 -> no Martingale -> 15,000
+    bet_m1 = MoneyManager.calculate_bet(
+        strategy="kelly_half_martingale_x3",
+        base_amount=10000.0,
+        current_balance=1000000.0,
+        loss_streak=1,
+        daily_loss_count=0,
+        pause_until=None,
+        win_rate=0.48,
+        is_stable=True
+    )
+    assert bet_m1 == 15000.0
+
+    # 4. Test Martingale in Initial Phase
+    # For is_initial_phase=True: base_bet = 1,000,000 * 0.02 = 20,000
+    # streak = 0 -> 20,000
+    bet_init_m0 = MoneyManager.calculate_bet(
+        strategy="kelly_half_martingale_x3",
+        base_amount=10000.0,
+        current_balance=1000000.0,
+        loss_streak=0,
+        daily_loss_count=0,
+        pause_until=None,
+        win_rate=0.48,
+        is_stable=True,
+        is_initial_phase=True,
+        initial_phase_remaining=10
+    )
+    assert bet_init_m0 == 20000.0
+
+    # streak = 1 -> 20,000 * 3 = 60,000
+    bet_init_m1 = MoneyManager.calculate_bet(
+        strategy="kelly_half_martingale_x3",
+        base_amount=10000.0,
+        current_balance=1000000.0,
+        loss_streak=1,
+        daily_loss_count=0,
+        pause_until=None,
+        win_rate=0.48,
+        is_stable=True,
+        is_initial_phase=True,
+        initial_phase_remaining=10
+    )
+    assert bet_init_m1 == 60000.0
+
 
 
 

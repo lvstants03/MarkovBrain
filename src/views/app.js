@@ -68,6 +68,25 @@ function copyTampermonkeyCode() {
     alert('Đã copy mã Tampermonkey Script vào clipboard!');
 }
 
+let demoBetsCurrentPage = 1;
+const demoBetsPageSize = 10;
+
+function prevDemoBetsPage() {
+    if (demoBetsCurrentPage > 1) {
+        demoBetsCurrentPage--;
+        fetchRealtimeData();
+    }
+}
+
+function nextDemoBetsPage() {
+    demoBetsCurrentPage++;
+    fetchRealtimeData();
+}
+
+function exportDemoBets() {
+    window.location.href = '/api/export/demo-bets';
+}
+
 // Main Real-Time Polling Logic
 async function fetchRealtimeData() {
     let data = null;
@@ -254,8 +273,12 @@ async function fetchRealtimeData() {
                 predTableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">Chưa có lịch sử dự đoán cược nào.</td></tr>`;
             } else {
                 predData.data.forEach(item => {
-                    const pState = item.predicted_parity === 'Le' ? 'Lẻ' : item.predicted_parity === 'Chan' ? 'Chẵn' : 'Không cược';
-                    const sState = item.predicted_size === 'Tai' ? 'Tài' : item.predicted_size === 'Xiu' ? 'Xỉu' : 'Không cược';
+                    const hasP = item.predicted_parity && item.predicted_parity !== 'Không có' && item.predicted_parity !== 'BO QUA';
+                    const hasS = item.predicted_size && item.predicted_size !== 'Không có' && item.predicted_size !== 'BO QUA';
+                    const pEngine = hasP ? ` (${item.engine_used_parity || 'Heuristics'})` : '';
+                    const sEngine = hasS ? ` (${item.engine_used_size || 'Heuristics'})` : '';
+                    const pState = (item.predicted_parity === 'Le' ? 'Lẻ' : item.predicted_parity === 'Chan' ? 'Chẵn' : 'Không cược') + pEngine;
+                    const sState = (item.predicted_size === 'Tai' ? 'Tài' : item.predicted_size === 'Xiu' ? 'Xỉu' : 'Không cược') + sEngine;
                     const timeStr = item.time ? item.time : '-';
                     const pConfStr = (item.predicted_parity !== 'Không có' && item.parity_confidence) ? `${item.parity_confidence}%` : '-';
                     const sConfStr = (item.predicted_size !== 'Không có' && item.size_confidence) ? `${item.size_confidence}%` : '-';
@@ -313,9 +336,38 @@ async function fetchRealtimeData() {
         
         // Fetch Balance & Demo Bets Info
         try {
-            const balanceResponse = await fetch('/api/balance?t=' + Date.now());
+            const balanceResponse = await fetch(`/api/balance?page=${demoBetsCurrentPage}&limit=${demoBetsPageSize}&t=${Date.now()}`);
             const balanceData = await balanceResponse.json();
             if (balanceData.status === 'success') {
+                // Cập nhật nhãn phân trang
+                const totalBets = balanceData.total_bets || 0;
+                const totalPages = Math.ceil(totalBets / demoBetsPageSize) || 1;
+                const pageTextEl = document.getElementById('demoBetsPageText');
+                if (pageTextEl) {
+                    pageTextEl.innerText = `Trang ${demoBetsCurrentPage} / ${totalPages}`;
+                }
+                
+                const btnPrev = document.getElementById('btnPrevDemoPage');
+                const btnNext = document.getElementById('btnNextDemoPage');
+                if (btnPrev) btnPrev.disabled = demoBetsCurrentPage <= 1;
+                if (btnNext) btnNext.disabled = demoBetsCurrentPage >= totalPages;
+
+                // Thống kê lợi nhuận cạnh nút Excel
+                const summary = balanceData.summary || {};
+                const netProfit = summary.net_profit || 0;
+                const netProfitEl = document.getElementById('demoNetProfitVal');
+                if (netProfitEl) {
+                    if (netProfit > 0) {
+                        netProfitEl.style.color = 'var(--success)';
+                        netProfitEl.innerText = `Lợi nhuận: +${netProfit.toLocaleString('vi-VN')} VND`;
+                    } else if (netProfit < 0) {
+                        netProfitEl.style.color = '#ef4444';
+                        netProfitEl.innerText = `Lợi nhuận: ${netProfit.toLocaleString('vi-VN')} VND`;
+                    } else {
+                        netProfitEl.style.color = 'var(--text-muted)';
+                        netProfitEl.innerText = `Lợi nhuận: 0 VND`;
+                    }
+                }
                 const b = balanceData.balances;
                 document.getElementById('realBalanceVal').innerText = `${b.real_balance.toLocaleString('vi-VN')} VND`;
                 
@@ -426,23 +478,42 @@ async function fetchRealtimeData() {
                 const demoBetsTable = document.getElementById('demoBetsTable');
                 demoBetsTable.innerHTML = '';
                 if (balanceData.demo_bets.length === 0) {
-                    demoBetsTable.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">Chưa có lượt cược giả lập nào được đặt...</td></tr>`;
+                    demoBetsTable.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">Chưa có lượt cược giả lập nào được đặt...</td></tr>`;
                 } else {
                     balanceData.demo_bets.forEach(bet => {
                         const marketText = bet.market_type === 'parity' ? 'Chẵn/Lẻ' : 'Tài/Xỉu';
                         const statusClass = bet.status === 'win' ? 'status-win' : bet.status === 'lose' ? 'status-lose' : 'status-pending';
                         const statusText = bet.status === 'win' ? 'THẮNG' : bet.status === 'lose' ? 'THUA' : 'Đang chờ';
                         
+                        let resultColor = 'var(--text-muted)';
+                        let resultText = '-';
+                        if (bet.status === 'win') {
+                            resultColor = 'var(--success)';
+                            resultText = '+' + bet.win_amount.toLocaleString('vi-VN');
+                        } else if (bet.status === 'lose') {
+                            resultColor = '#ef4444';
+                            resultText = '-' + bet.amount.toLocaleString('vi-VN');
+                        }
+                        
+                        let engineColor = 'var(--text-muted)';
+                        const engineVal = bet.engine || 'Heuristics';
+                        if (engineVal === 'Combined') {
+                            engineColor = '#a5b4fc';
+                        } else if (engineVal === 'Gemini') {
+                            engineColor = '#34d399';
+                        }
+
                         const tr = document.createElement('tr');
                         tr.innerHTML = `
                             <td style="color: var(--text-muted); font-size: 0.85rem;">${bet.time || '-'}</td>
                             <td style="font-weight: 600;">${bet.issue}</td>
                             <td>${marketText}</td>
                             <td style="color: #a5b4fc; font-weight: 500;">${bet.prediction}</td>
+                            <td style="color: ${engineColor}; font-weight: 500;">${engineVal}</td>
                             <td style="text-align: right; font-weight: 500;">${bet.amount.toLocaleString('vi-VN')}</td>
                             <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-                            <td style="text-align: right; color: ${bet.status === 'win' ? 'var(--success)' : 'var(--text-muted)'}; font-weight: 600;">
-                                ${bet.status === 'win' ? '+' + bet.win_amount.toLocaleString('vi-VN') : '-'}
+                            <td style="text-align: right; color: ${resultColor}; font-weight: 600;">
+                                ${resultText}
                             </td>
                             <td style="text-align: right; font-weight: 500;">${bet.balance_after.toLocaleString('vi-VN')}</td>
                         `;

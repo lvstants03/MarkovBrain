@@ -4,6 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from contextlib import asynccontextmanager
 import os
+import logging
+
+# Giam log API - chi hien WARNING va ERROR, tat INFO cua uvicorn.access
+logging.getLogger("uvicorn.access").disabled = True
 
 from src.config import config
 from src.core.scraper import scraper
@@ -57,5 +61,6 @@ if __name__ == "__main__":
         "src.main:app",
         host=config.API_HOST,
         port=config.API_PORT,
-        reload=True
+        reload=True,
+        log_level="warning"
     )
