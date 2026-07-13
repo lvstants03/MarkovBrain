@@ -78,6 +78,27 @@ class MoneyManager:
     """
 
     @staticmethod
+    def get_combined_multiplier(confidence: float, win_rate: float) -> float:
+        # Điều kiện nâng cao mới: Confidence >= 70% và Xác suất trượt (win_rate) >= 62%
+        if confidence >= 70.0 and win_rate >= 0.62:
+            if confidence >= 90.0:
+                return 1.40  # Tăng 40%
+            elif confidence >= 80.0:
+                return 1.35  # Tăng 35%
+            else:
+                return 1.30  # Tăng 30%
+        else:
+            # Giữ nguyên cơ chế cũ làm fallback
+            if win_rate >= 0.60:
+                return 1.5
+            elif win_rate >= 0.55:
+                return 1.4
+            elif win_rate >= 0.50:
+                return 1.2
+            else:
+                return 1.0
+
+    @staticmethod
     def calculate_bet(
         strategy: str,
         base_amount: float,
@@ -92,6 +113,7 @@ class MoneyManager:
         initial_phase_remaining: int = 0,
         is_combined: bool = False,  # Đánh dấu đồng thuận giữa Gemini và Heuristics
         market_type: str = "parity",  # <--- THÊM DÒNG NÀY
+        confidence: float = 0.0,      # <--- THÊM CONFIDENCE
     ) -> float:
         """
         Tra ve so tien dat cuoc cuoi cung (VND).
@@ -166,17 +188,12 @@ class MoneyManager:
                     if bet > max_bet:
                         bet = max_bet
 
-                # Sau khi tính bet, áp dụng tăng nếu đồng thuận (dựa trên WR)
+                # Sau khi tính bet, áp dụng tăng nếu đồng thuận (dựa trên WR và confidence)
                 if is_combined and bet > 0:
-                    if win_rate >= 0.60:
-                        multiplier_comb = 1.5
-                    elif win_rate >= 0.55:
-                        multiplier_comb = 1.4
-                    elif win_rate >= 0.50:
-                        multiplier_comb = 1.2
-                    else:
-                        multiplier_comb = 1.0
+                    multiplier_comb = MoneyManager.get_combined_multiplier(confidence, win_rate)
                     bet = bet * multiplier_comb
+                    if bet > 1000000.0:
+                        bet = 1000000.0
                 max_allowed = current_balance * 0.25  # giữ nguyên 25% cho giai đoạn khởi tạo
                 if bet > max_allowed:
                     bet = max_allowed
@@ -230,18 +247,19 @@ class MoneyManager:
             else:
                 bet = base_bet
 
-            # ============ TANG CƯỢC KHI DONG THUAN (is_combined) DỰA TRÊN WR ============
+            # ============ TANG CƯỢC KHI DONG THUAN (is_combined) DỰA TRÊN WR VÀ CONFIDENCE ============
             if is_combined and bet > 0:
-                if win_rate >= 0.60:
-                    multiplier_comb = 1.5
-                elif win_rate >= 0.55:
-                    multiplier_comb = 1.4
-                elif win_rate >= 0.50:
-                    multiplier_comb = 1.2
-                else:
-                    multiplier_comb = 1.0
+                multiplier_comb = MoneyManager.get_combined_multiplier(confidence, win_rate)
                 bet = bet * multiplier_comb
-                logger.debug(f"[Combined] Tang {int((multiplier_comb-1)*100)}% do dong thuan (WR={win_rate*100:.1f}%), bet={bet:,.0f}")
+                if confidence >= 70.0 and win_rate >= 0.62:
+                    logger.debug(f"[Combined Advanced] Tang {int(round((multiplier_comb-1)*100))}% (Confidence={confidence}%, WR={win_rate*100:.1f}%), bet={bet:,.0f}")
+                else:
+                    logger.debug(f"[Combined Fallback] Tang {int((multiplier_comb-1)*100)}% do dong thuan (WR={win_rate*100:.1f}%), bet={bet:,.0f}")
+
+                # Áp dụng giới hạn tối đa cược là 1.000.000 VND
+                if bet > 1000000.0:
+                    bet = 1000000.0
+                    logger.debug(f"[Combined Max Bet Limit] Gioi han bet xuong 1,000,000 VND")
 
             # ============ GIẢM CƯỢC KHI ĐANG THUA LIÊN TIẾP ============
             if loss_streak >= 2:
@@ -429,6 +447,9 @@ class MoneyManager:
         is_stable: bool = True,
         is_initial_phase: bool = False,
         initial_phase_remaining: int = 0,
+        is_combined: bool = False,
+        market_type: str = "parity",
+        confidence: float = 0.0,
     ) -> Dict[str, Any]:
         """
         Tra ve day du thong tin rui ro de hien thi trong Frontend panel.
@@ -444,7 +465,9 @@ class MoneyManager:
             is_stable=is_stable,
             is_initial_phase=is_initial_phase,
             initial_phase_remaining=initial_phase_remaining,
-            market_type="parity",  # Giá trị mặc định nếu không truyền
+            is_combined=is_combined,
+            market_type=market_type,
+            confidence=confidence,
         )
 
         pct_of_balance = (next_bet / current_balance * 100) if current_balance > 0 else 0.0

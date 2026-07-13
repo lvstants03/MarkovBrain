@@ -66,12 +66,22 @@ class PredictionsMixin:
             if pred_p and pred_p != "Không có":
                 dec_p = "MUA LẺ" if pred_p == "Le" else "MUA CHẴN"
                 is_combined_p = (engine_used_parity == "Combined")
-                self.place_demo_bet(issue, "parity", dec_p, bet_amt, is_combined=is_combined_p)
+                self.place_demo_bet(
+                    issue, "parity", dec_p, bet_amt, 
+                    is_combined=is_combined_p, 
+                    confidence=record.get("parity_confidence") or 0.0,
+                    engine=engine_used_parity or "Heuristics"
+                )
             pred_s = record.get("predicted_size")
             if pred_s and pred_s != "Không có":
                 dec_s = "MUA TÀI" if pred_s == "Tai" else "MUA XỈU"
                 is_combined_s = (engine_used_size == "Combined")
-                self.place_demo_bet(issue, "size", dec_s, bet_amt, is_combined=is_combined_s)
+                self.place_demo_bet(
+                    issue, "size", dec_s, bet_amt, 
+                    is_combined=is_combined_s, 
+                    confidence=record.get("size_confidence") or 0.0,
+                    engine=engine_used_size or "Heuristics"
+                )
 
         return added
 

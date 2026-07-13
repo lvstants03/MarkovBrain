@@ -410,9 +410,15 @@
 
                 <!-- Simulated Bet Logs Table -->
                 <div class="card">
-                    <div class="card-title">
-                        <span>Nhật Ký Cược Giả Lập (Simulated Bets)</span>
-                        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;">Hiển thị 50 giao dịch gần nhất</span>
+                    <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <span>Nhật Ký Cược Giả Lập (Simulated Bets)</span>
+                            <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal; margin-left: 0.5rem;">Lưu tối đa 100 kỳ gần nhất</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <span id="demoNetProfitVal" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Lợi nhuận: 0 VND</span>
+                            <button class="btn btn-secondary" onclick="exportDemoBets()" style="padding: 0.25rem 0.75rem; font-size: 0.8rem; height: auto;">XUẤT EXCEL</button>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table>
@@ -422,6 +428,7 @@
                                     <th>Kỳ Quay</th>
                                     <th>Hạng Mục</th>
                                     <th>Cửa Đặt</th>
+                                    <th>Thuật toán</th>
                                     <th style="text-align: right;">Lượng Cược</th>
                                     <th>Trạng Thái</th>
                                     <th style="text-align: right;">Kết Quả VND</th>
@@ -430,10 +437,15 @@
                             </thead>
                             <tbody id="demoBetsTable">
                                 <tr>
-                                    <td colspan="8" style="text-align: center; color: var(--text-muted);">Đang tải lịch sử cược giả lập...</td>
+                                    <td colspan="9" style="text-align: center; color: var(--text-muted);">Đang tải lịch sử cược giả lập...</td>
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                    <div class="pagination-container" style="display: flex; justify-content: center; align-items: center; gap: 1rem; margin-top: 1rem; padding-top: 0.5rem; border-top: 1px solid var(--border-card);">
+                        <button class="btn btn-secondary" id="btnPrevDemoPage" onclick="prevDemoBetsPage()" style="padding: 0.2rem 0.6rem; font-size: 0.75rem; height: auto;">Trang trước</button>
+                        <span id="demoBetsPageText" style="font-size: 0.82rem; color: var(--text-muted); font-weight: 500;">Trang 1 / 1</span>
+                        <button class="btn btn-secondary" id="btnNextDemoPage" onclick="nextDemoBetsPage()" style="padding: 0.2rem 0.6rem; font-size: 0.75rem; height: auto;">Trang sau</button>
                     </div>
                 </div>
 
@@ -621,6 +633,6 @@
     </div>
 
     <!-- Script assets inclusion -->
-    <script src="/app.js"></script>
+    <script src="/app.js?v=202607131615"></script>
 </body>
 </html>

@@ -1,8 +1,9 @@
-﻿import json
+import json
 import time
 import logging
 from typing import List, Dict, Any, Optional
 from src.core.money_management import MoneyManager
+from src.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +197,7 @@ class BetsMixin:
             self._save_local_store()
         return True
 
-    def get_demo_bets(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_demo_bets(self, limit: int = 100) -> List[Dict[str, Any]]:
         if self.use_redis:
             try:
                 issues = self.redis_client.lrange(self.key_demo_bets_list, 0, limit - 1)
@@ -217,6 +218,31 @@ class BetsMixin:
                 flat_bets.extend(bets)
             flat_bets.sort(key=lambda x: x["issue"], reverse=True)
             return flat_bets[:limit]
+
+    def get_demo_bets_paginated(self, page: int = 1, limit: int = 10) -> Dict[str, Any]:
+        start = (page - 1) * limit
+        end = start + limit
+        all_bets = []
+        if self.use_redis:
+            try:
+                issues = self.redis_client.lrange(self.key_demo_bets_list, 0, -1)
+                if issues:
+                    bets_json = self.redis_client.hmget(self.key_demo_bets, issues)
+                    for x in bets_json:
+                        if x:
+                            all_bets.extend(json.loads(x))
+            except Exception as e:
+                logger.error(f"Redis error in get_demo_bets_paginated: {e}")
+        else:
+            with self._lock:
+                for issue, bets in self._demo_bets.items():
+                    all_bets.extend(bets)
+        all_bets.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+        total = len(all_bets)
+        return {
+            "bets": all_bets[start:end],
+            "total": total
+        }
 
     def get_bet_summary(self, since_ts: float = None, until_ts: float = None) -> Dict[str, Any]:
         """Tong hop nhat ky cuoc theo khoang thoi gian. since_ts, until_ts la Unix timestamp."""
@@ -362,7 +388,7 @@ class BetsMixin:
             }
 
     # ============================ SỬA HÀM place_demo_bet ============================
-    def place_demo_bet(self, issue: str, market_type: str, prediction: str, amount: float, is_combined: bool = False):
+    def place_demo_bet(self, issue: str, market_type: str, prediction: str, amount: float, is_combined: bool = False, confidence: float = 0.0, engine: str = "Heuristics"):
         if not issue or not prediction or prediction in ("Khong co", "BO QUA", "Không có", "Bỏ QUA"):
             return False
 
@@ -405,7 +431,8 @@ class BetsMixin:
             is_initial_phase=is_initial_phase,
             initial_phase_remaining=self._initial_phase_remaining,
             is_combined=is_combined,
-            market_type=market_type,  # <--- THÊM DÒNG NÀY
+            market_type=market_type,  
+            confidence=confidence,
         )
 
         if final_amount == 0.0:
@@ -440,7 +467,8 @@ class BetsMixin:
             "amount": final_amount,
             "status": "pending",
             "win_amount": 0.0,
-            "balance_after": 0.0
+            "balance_after": 0.0,
+            "engine": engine
         }
 
         if self.use_redis:
@@ -469,6 +497,10 @@ class BetsMixin:
                 self.redis_client.hset(self.key_demo_bets, issue, json.dumps(existing_bets))
                 if not existing_json:
                     self.redis_client.lpush(self.key_demo_bets_list, issue)
+                    if self.redis_client.llen(self.key_demo_bets_list) > 100:
+                        removed = self.redis_client.rpop(self.key_demo_bets_list)
+                        if removed:
+                            self.redis_client.hdel(self.key_demo_bets, removed)
                 return True
             except Exception as e:
                 logger.error(f"Redis error in place_demo_bet: {e}")
@@ -479,6 +511,10 @@ class BetsMixin:
             if issue not in self._demo_bets:
                 self._demo_bets[issue] = []
             self._demo_bets[issue].append(bet)
+            # Giới hạn 100 kỳ cược trong bộ nhớ
+            if len(self._demo_bets) > 100:
+                oldest_key = min(self._demo_bets.keys(), key=lambda k: self._demo_bets[k][0]["timestamp"] if self._demo_bets[k] else 0)
+                self._demo_bets.pop(oldest_key, None)
             self._save_local_store()
         return True
 

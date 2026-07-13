@@ -217,3 +217,50 @@ async def export_predictions():
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=lich_su_du_doan.csv"}
     )
+
+@router.get("/export/demo-bets")
+async def export_demo_bets():
+    bets = store.get_demo_bets(limit=10000)
+    
+    def generate():
+        yield b'\xef\xbb\xbf'
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "Thời gian", "Kỳ quay", "Hạng mục", "Cửa đặt", "Thuật toán",
+            "Lượng cược", "Trạng thái", "Kết quả VND", "Số dư sau"
+        ])
+        
+        for b in bets:
+            market_txt = "Chẵn/Lẻ" if b.get("market_type") == "parity" else "Tài/Xỉu"
+            status = b.get("status", "pending")
+            status_txt = "Đang chờ" if status == "pending" else "THẮNG" if status == "win" else "THUA"
+            
+            if status == "win":
+                result_vnd = f"+{b.get('win_amount', 0.0):,.0f}"
+            elif status == "lose":
+                result_vnd = f"-{b.get('amount', 0.0):,.0f}"
+            else:
+                result_vnd = "-"
+
+            writer.writerow([
+                b.get("time", ""),
+                b.get("issue", ""),
+                market_txt,
+                b.get("prediction", ""),
+                b.get("engine", "Heuristics"),
+                f"{b.get('amount', 0.0):,.0f}",
+                status_txt,
+                result_vnd,
+                f"{b.get('balance_after', 0.0):,.0f}"
+            ])
+            yield output.getvalue().encode('utf-8')
+            output.seek(0)
+            output.truncate(0)
+            
+    return StreamingResponse(
+        generate(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=nhat_ky_cuoc_gia_lap.csv"}
+    )
+

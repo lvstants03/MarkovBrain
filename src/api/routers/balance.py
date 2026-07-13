@@ -13,10 +13,14 @@ class DemoConfigUpdate(BaseModel):
     demo_balance: Optional[float] = Field(None, ge=0.0, description="Tu dat so du gia lap moi")
 
 @router.get("/balance")
-async def get_balance_info():
+async def get_balance_info(page: int = Query(default=1, ge=1), limit: int = Query(default=10, ge=1, le=100)):
     from src.core.money_management import MoneyManager, get_effective_win_rate, STRATEGY_LABELS
     balances = store.get_balances()
-    bets = store.get_demo_bets(limit=50)
+    
+    # Sử dụng hàm get_demo_bets_paginated để phân trang
+    demo_bets_data = store.get_demo_bets_paginated(page=page, limit=limit)
+    bets = demo_bets_data["bets"]
+    total_bets = demo_bets_data["total"]
 
     demo_balance = balances.get("demo_balance", 0.0)
     base_bet = balances.get("demo_bet_amount", 100000.0)
@@ -38,15 +42,28 @@ async def get_balance_info():
     p_win_rate = get_effective_win_rate(prediction_stats_recent, "parity")
     s_win_rate = get_effective_win_rate(prediction_stats_recent, "size")
 
+    # Lấy thông tin dự đoán mới nhất để đồng bộ tiền cược kì tới
+    latest_preds = store.get_prediction_history(limit=1)
+    is_combined_p = False
+    is_combined_s = False
+    p_confidence = 0.0
+    s_confidence = 0.0
+    if latest_preds:
+        latest = latest_preds[0]
+        is_combined_p = (latest.get("engine_used_parity") == "Combined")
+        is_combined_s = (latest.get("engine_used_size") == "Combined")
+        p_confidence = latest.get("parity_confidence") or 0.0
+        s_confidence = latest.get("size_confidence") or 0.0
+
     p_bet = MoneyManager.calculate_bet(
         strategy=strategy, base_amount=base_bet, current_balance=demo_balance,
         loss_streak=p_streak, daily_loss_count=p_daily, pause_until=p_pause, win_rate=p_win_rate,
-        is_stable=is_stable
+        is_stable=is_stable, is_combined=is_combined_p, market_type="parity", confidence=p_confidence
     )
     s_bet = MoneyManager.calculate_bet(
         strategy=strategy, base_amount=base_bet, current_balance=demo_balance,
         loss_streak=s_streak, daily_loss_count=s_daily, pause_until=s_pause, win_rate=s_win_rate,
-        is_stable=is_stable
+        is_stable=is_stable, is_combined=is_combined_s, market_type="size", confidence=s_confidence
     )
 
     max_streak = MoneyManager.get_max_streak_tolerated(strategy, demo_balance, base_bet, s_win_rate)
@@ -56,16 +73,17 @@ async def get_balance_info():
         is_bankrupt = is_bankrupt or (p_bet > demo_balance and s_bet > demo_balance)
 
     collapses = store.get_capital_collapses(limit=50)
+    summary_data = store.get_bet_summary()
 
     risk_info_parity = MoneyManager.get_risk_info(
         strategy=strategy, current_balance=demo_balance, base_amount=base_bet,
         win_rate=p_win_rate, loss_streak=p_streak, daily_loss_count=p_daily, pause_until=p_pause,
-        is_stable=is_stable
+        is_stable=is_stable, is_combined=is_combined_p, market_type="parity", confidence=p_confidence
     )
     risk_info_size = MoneyManager.get_risk_info(
         strategy=strategy, current_balance=demo_balance, base_amount=base_bet,
         win_rate=s_win_rate, loss_streak=s_streak, daily_loss_count=s_daily, pause_until=s_pause,
-        is_stable=is_stable
+        is_stable=is_stable, is_combined=is_combined_s, market_type="size", confidence=s_confidence
     )
 
     return {
@@ -85,6 +103,10 @@ async def get_balance_info():
         },
         "strategy_labels": STRATEGY_LABELS,
         "demo_bets": bets,
+        "total_bets": total_bets,
+        "page": page,
+        "limit": limit,
+        "summary": summary_data["summary"],
         "capital_collapses": collapses
     }
 
