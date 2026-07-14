@@ -1,4 +1,4 @@
-﻿import threading
+import threading
 import os
 import json
 import logging
@@ -258,6 +258,40 @@ class DataStore(RecordsMixin, PredictionsMixin, BetsMixin):
             if not hasattr(self, "_socket_logs"):
                 return []
             return self._socket_logs[:limit]
+
+    def generate_and_save_prediction(self, next_issue: str) -> dict:
+        if not next_issue:
+            return {}
+        existing = self.get_prediction(next_issue)
+        if existing:
+            return existing
+
+        from src.core.analyzer import ProbabilityAnalyzer
+        history = self.get_history(limit=500)
+        stats = ProbabilityAnalyzer.analyze(history)
+
+        ai_parity = stats.get("ai_recommendation", {}).get("parity", {}).get("decision", "BỎ QUA")
+        ai_size = stats.get("ai_recommendation", {}).get("size", {}).get("decision", "BỎ QUA")
+
+        predicted_parity = "Le" if ai_parity == "MUA LẺ" else "Chan" if ai_parity == "MUA CHẴN" else "Không có"
+        predicted_size = "Tai" if ai_size == "MUA TÀI" else "Xiu" if ai_size == "MUA XỈU" else "Không có"
+
+        parity_conf = stats.get("ai_recommendation", {}).get("parity", {}).get("confidence", 50)
+        size_conf = stats.get("ai_recommendation", {}).get("size", {}).get("confidence", 50)
+
+        pred_data = {
+            "predicted_parity": predicted_parity,
+            "predicted_size": predicted_size,
+            "parity_confidence": parity_conf if predicted_parity != "Không có" else None,
+            "size_confidence": size_conf if predicted_size != "Không có" else None,
+            "total_records_at_prediction": stats.get("total_records", 0),
+            "engine": stats.get("ai_recommendation", {}).get("engine", "Heuristics (3-Layer)"),
+            "parity_rationale": stats.get("ai_recommendation", {}).get("parity", {}).get("rationale", ""),
+            "size_rationale": stats.get("ai_recommendation", {}).get("size", {}).get("rationale", ""),
+            "engine_used": stats.get("engine_used", {})
+        }
+        self.add_prediction(next_issue, pred_data)
+        return pred_data
 
 
 store = DataStore()
