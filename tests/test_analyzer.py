@@ -172,6 +172,31 @@ def test_analyzer_gemini_fallback():
     finally:
         config.GEMINI_API_KEY = original_key
 
+def test_analyzer_gemini_rate_limit():
+    # Verify that the Gemini rate limiting path operates successfully without NameError
+    from src.config import config
+    from src.core.gemini_client import GeminiClient
+    import time
+
+    original_key = getattr(config, "GEMINI_API_KEY", "")
+    original_last_call = GeminiClient._last_call_time
+    try:
+        config.GEMINI_API_KEY = "dummy_key"
+        # Force the last call time to be now, triggering the rate limit check
+        GeminiClient._last_call_time = time.time()
+        
+        history_records = [
+            {"issue": f"{i:03d}", "numbers": [5, 5, 5, 5, 5], "total": 25, "is_tai": i % 2 == 0, "is_le": i % 2 == 0}
+            for i in range(10)
+        ]
+        result = ProbabilityAnalyzer.analyze(history_records)
+        assert "ai_recommendation" in result
+        assert result["ai_recommendation"]["parity"]["decision"] in ["MUA CHẴN", "MUA LẺ", "BỎ QUA"]
+        assert result["ai_recommendation"]["size"]["decision"] in ["MUA TÀI", "MUA XỈU", "BỎ QUA"]
+    finally:
+        config.GEMINI_API_KEY = original_key
+        GeminiClient._last_call_time = original_last_call
+
 def test_martingale_and_custom_balance():
     store = DataStore()
     store.clear()
@@ -494,6 +519,41 @@ def test_kelly_half_martingale_x3_calculation():
         initial_phase_remaining=10
     )
     assert bet_init_m1 == 60000.0
+
+
+def test_analyzer_config_loading():
+    # 1. Test fallback when files don't exist
+    defaults = {"streak_min_samples": 3, "ar_threshold_multiplier": 0.5, "ma50_filter_active": True}
+    cfg = ProbabilityAnalyzer._load_config("non_existent_file_name_123.json", defaults)
+    assert cfg == defaults
+
+    # 2. Test loading and validation logic
+    import json
+    import os
+    temp_cfg_name = "analyzer_temp_test_config.json"
+    # path relative to project root
+    temp_cfg_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), temp_cfg_name)
+    
+    test_data = {
+        "streak_min_samples": 5,
+        "ar_threshold_multiplier": "abc",
+        "ma50_filter_active": False,
+        "extra_field": "test"
+    }
+    
+    with open(temp_cfg_path, "w", encoding="utf-8") as f:
+        json.dump(test_data, f)
+        
+    try:
+        cfg = ProbabilityAnalyzer._load_config(temp_cfg_name, defaults)
+        assert cfg["streak_min_samples"] == 5
+        assert cfg["ar_threshold_multiplier"] == 0.5
+        assert cfg["ma50_filter_active"] is False
+        assert "extra_field" not in cfg
+    finally:
+        if os.path.exists(temp_cfg_path):
+            os.remove(temp_cfg_path)
+
 
 
 

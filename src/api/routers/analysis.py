@@ -1,4 +1,4 @@
-import io
+﻿import io
 import csv
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import StreamingResponse
@@ -13,7 +13,7 @@ async def get_market_analysis(limit: int = Query(default=100, ge=30, le=1000)):
     if not predictions:
         return {
             "status": "success",
-            "message": "Ch?a c? d? li?u d? ?o?n ?? ph?n t?ch.",
+            "message": "Chưa có dữ liệu dự đoán để phân tích.",
             "data": {
                 "weird_breaks": [],
                 "blocks_30": [],
@@ -31,10 +31,10 @@ async def get_market_analysis(limit: int = Query(default=100, ge=30, le=1000)):
         }
         if pred.get("status_parity") == "lose" and (pred.get("parity_confidence") or 0) >= 68:
             is_weird = True
-            details["details"].append(f"Parity: ?o?n {pred['predicted_parity']} ({pred['parity_confidence']}% x?c su?t) nh?ng ra {pred['actual_parity']}")
+            details["details"].append(f"Parity: Đoán {pred['predicted_parity']} ({pred['parity_confidence']}% xác suất) nhưng ra {pred['actual_parity']}")
         if pred.get("status_size") == "lose" and (pred.get("size_confidence") or 0) >= 68:
             is_weird = True
-            details["details"].append(f"Size: ?o?n {pred['predicted_size']} ({pred['size_confidence']}% x?c su?t) nh?ng ra {pred['actual_size']}")
+            details["details"].append(f"Size: Đoán {pred['predicted_size']} ({pred['size_confidence']}% xác suất) nhưng ra {pred['actual_size']}")
         
         if is_weird:
             weird_breaks.append(details)
@@ -63,7 +63,7 @@ async def get_market_analysis(limit: int = Query(default=100, ge=30, le=1000)):
         start_time = block[0].get("time", "-")
         end_time = block[-1].get("time", "-")
         
-        status = "?n ??nh" if win_rate >= 55.0 else "H?n lo?n" if win_rate < 45.0 else "B?nh th??ng"
+        status = "Ổn định" if win_rate >= 55.0 else "Hỗn loạn" if win_rate < 45.0 else "Bình thường"
         
         blocks_analysis.append({
             "block_range": f"{start_issue} - {end_issue}",
@@ -125,7 +125,7 @@ async def export_history():
         yield b'\xef\xbb\xbf'
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["K? (Issue)", "Th?i gian", "S? k?t qu?", "T?ng ?i?m", "T?i / X?u", "Ch?n / L?"])
+        writer.writerow(["Kỳ (Issue)", "Thời gian", "Số kết quả", "Tổng điểm", "Tài / Xỉu", "Chẵn / Lẻ"])
         
         for r in history:
             numbers_str = " ".join(map(str, r.get("numbers") or []))
@@ -134,8 +134,8 @@ async def export_history():
                 r.get("time", ""),
                 numbers_str,
                 r.get("total", ""),
-                "T?i" if r.get("is_tai") else "X?u",
-                "L?" if r.get("is_le") else "Ch?n"
+                "Tài" if r.get("is_tai") else "Xỉu",
+                "Lẻ" if r.get("is_le") else "Chẵn"
             ])
             yield output.getvalue().encode('utf-8')
             output.seek(0)
@@ -156,24 +156,24 @@ async def export_predictions():
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow([
-            "Th?i gian", "K? c??c", "D? ?o?n Ch?n/L?", "% Parity",
-            "D? ?o?n T?i/X?u", "% Size", "K?t qu? th?t", "Tr?ng th?i"
+            "Thời gian", "Kỳ cược", "Dự đoán Chẵn/Lẻ", "% Parity",
+            "Dự đoán Tài/Xỉu", "% Size", "Kết quả thật", "Trạng thái"
         ])
         
         for p in predictions:
-            raw_parity = p.get("predicted_parity", "Kh?ng c?")
-            parity_pred = "L?" if raw_parity == "Le" else "Ch?n" if raw_parity == "Chan" else "B? qua"
-            parity_conf = f"{p.get('parity_confidence')}%" if (raw_parity != "Kh?ng c?" and p.get('parity_confidence')) else "-"
+            raw_parity = p.get("predicted_parity", "Không có")
+            parity_pred = "Lẻ" if raw_parity == "Le" else "Chẵn" if raw_parity == "Chan" else "Bỏ qua"
+            parity_conf = f"{p.get('parity_confidence')}%" if (raw_parity != "Không có" and p.get('parity_confidence')) else "-"
             
-            raw_size = p.get("predicted_size", "Kh?ng c?")
-            size_pred = "T?i" if raw_size == "Tai" else "X?u" if raw_size == "Xiu" else "B? qua"
-            size_conf = f"{p.get('size_confidence')}%" if (raw_size != "Kh?ng c?" and p.get('size_confidence')) else "-"
+            raw_size = p.get("predicted_size", "Không có")
+            size_pred = "Tài" if raw_size == "Tai" else "Xỉu" if raw_size == "Xiu" else "Bỏ qua"
+            size_conf = f"{p.get('size_confidence')}%" if (raw_size != "Không có" and p.get('size_confidence')) else "-"
             
             real_parity = p.get("actual_parity", "")
             real_size = p.get("actual_size", "")
             if real_parity or real_size:
-                act_p = "L?" if real_parity == "Le" else "Ch?n"
-                act_s = "T?i" if real_size == "Tai" else "X?u"
+                act_p = "Lẻ" if real_parity == "Le" else "Chẵn"
+                act_s = "Tài" if real_size == "Tai" else "Xỉu"
                 real_result = f"{act_s} / {act_p}"
             else:
                 real_result = "-"
@@ -182,9 +182,9 @@ async def export_predictions():
             status_size = p.get("status_size", "ignored")
             
             if status_parity == "pending" or status_size == "pending":
-                status_txt = "?ang ch?"
+                status_txt = "Đang chờ"
             elif status_parity == "ignored" and status_size == "ignored":
-                status_txt = "B? qua"
+                status_txt = "Bỏ qua"
             else:
                 win_count = 0
                 loss_count = 0
@@ -198,11 +198,11 @@ async def export_predictions():
                     loss_count += 1
                 
                 if loss_count == 0:
-                    status_txt = "TH?NG"
+                    status_txt = "THẮNG"
                 elif win_count == 0:
                     status_txt = "THUA"
                 else:
-                    status_txt = "H?A (1W/1L)"
+                    status_txt = "HÒA (1W/1L)"
                 
             writer.writerow([
                 p.get("time", ""), p.get("issue", ""), parity_pred, parity_conf,
@@ -263,4 +263,3 @@ async def export_demo_bets():
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=nhat_ky_cuoc_gia_lap.csv"}
     )
-

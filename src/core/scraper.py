@@ -110,6 +110,7 @@ class WebSocketScraper:
             elif isinstance(payload, list):
                 draw_list = payload
             imported_count = 0
+            max_added_issue = None
             for item in draw_list:
                 if not isinstance(item, dict):
                     continue
@@ -120,6 +121,18 @@ class WebSocketScraper:
                     added = store.add_record(issue, numbers)
                     if added:
                         imported_count += 1
+                        if not max_added_issue or issue > max_added_issue:
+                            max_added_issue = issue
+            
+            if max_added_issue:
+                try:
+                    from src.api.routers.core import get_next_issue_code
+                    next_issue = get_next_issue_code(max_added_issue)
+                    if next_issue:
+                        asyncio.create_task(asyncio.to_thread(store.generate_and_save_prediction, next_issue))
+                except Exception as ex:
+                    logger.error(f"Error triggering auto prediction in trigger_fetch: {ex}")
+
             logger.info(f"Fetch completed: imported {imported_count} new records")
             return imported_count
         except Exception as e:
@@ -367,6 +380,13 @@ class WebSocketScraper:
                         if added:
                             logger.info(f"[{config.LOTTERY_CODE}] Received new real issue {target_issue}: {numbers}")
                             asyncio.create_task(self.fetch_user_balance())
+                            try:
+                                from src.api.routers.core import get_next_issue_code
+                                next_issue = get_next_issue_code(target_issue)
+                                if next_issue:
+                                    asyncio.create_task(asyncio.to_thread(store.generate_and_save_prediction, next_issue))
+                            except Exception as ex:
+                                logger.error(f"Error triggering auto prediction in websocket: {ex}")
             else:
                 data_field = data.get("data") or {}
                 if isinstance(data_field, dict):
@@ -387,6 +407,13 @@ class WebSocketScraper:
                                             if added:
                                                 logger.info(f"[{config.LOTTERY_CODE}] Received new real issue {target_issue}: {numbers}")
                                                 asyncio.create_task(self.fetch_user_balance())
+                                                try:
+                                                    from src.api.routers.core import get_next_issue_code
+                                                    next_issue = get_next_issue_code(target_issue)
+                                                    if next_issue:
+                                                        asyncio.create_task(asyncio.to_thread(store.generate_and_save_prediction, next_issue))
+                                                except Exception as ex:
+                                                    logger.error(f"Error triggering auto prediction in websocket: {ex}")
         except Exception as e:
             logger.error(f"Failed to process websocket message: {str(e)}. Raw: {message[:200]}")
 

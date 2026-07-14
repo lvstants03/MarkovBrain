@@ -50,6 +50,9 @@ async def get_statistics(limit: int = Query(default=500, ge=1, le=10000)):
             
         existing_pred = store.get_prediction(next_issue) if next_issue else None
         
+        if not existing_pred and next_issue:
+            existing_pred = store.generate_and_save_prediction(next_issue)
+            
         if existing_pred:
             # Override stats with existing saved prediction to avoid UI mismatch
             p_pred = existing_pred.get("predicted_parity", "Không có")
@@ -68,27 +71,8 @@ async def get_statistics(limit: int = Query(default=500, ge=1, le=10000)):
                     "rationale": existing_pred.get("size_rationale") or "Dự đoán đã được ghi nhận trong cơ sở dữ liệu."
                 }
             }
-        else:
-            ai_parity = stats.get("ai_recommendation", {}).get("parity", {}).get("decision", "BỎ QUA")
-            ai_size = stats.get("ai_recommendation", {}).get("size", {}).get("decision", "BỎ QUA")
-            
-            predicted_parity = "Le" if ai_parity == "MUA LẺ" else "Chan" if ai_parity == "MUA CHẴN" else "Không có"
-            predicted_size = "Tai" if ai_size == "MUA TÀI" else "Xiu" if ai_size == "MUA XỈU" else "Không có"
-            
-            parity_conf = stats.get("ai_recommendation", {}).get("parity", {}).get("confidence", 50)
-            size_conf = stats.get("ai_recommendation", {}).get("size", {}).get("confidence", 50)
-            
-            # Always save the prediction to history (even if BỎ QUA) to reset streaks correctly and show on UI
-            store.add_prediction(next_issue, {
-                "predicted_parity": predicted_parity,
-                "predicted_size": predicted_size,
-                "parity_confidence": parity_conf if predicted_parity != "Không có" else None,
-                "size_confidence": size_conf if predicted_size != "Không có" else None,
-                "total_records_at_prediction": stats.get("total_records", 0),
-                "engine": stats.get("ai_recommendation", {}).get("engine", "Heuristics (3-Layer)"),
-                "parity_rationale": stats.get("ai_recommendation", {}).get("parity", {}).get("rationale", ""),
-                "size_rationale": stats.get("ai_recommendation", {}).get("size", {}).get("rationale", "")
-            })
+            if "engine_used" in existing_pred:
+                stats["engine_used"] = existing_pred["engine_used"]
             
     prediction_stats = store.get_prediction_stats()
     
