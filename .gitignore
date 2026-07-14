@@ -44,3 +44,8 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 .DS_Store
+
+# Ignore all JSON files except package.json
+*.json
+!package.json
+!package-lock.json
