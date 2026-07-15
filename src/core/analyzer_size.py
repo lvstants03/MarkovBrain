@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Any
@@ -11,16 +11,10 @@ logger = logging.getLogger(__name__)
 
 class SizeAnalyzer:
     @staticmethod
-    def analyze(history: List[Dict[str, Any]], df: pd.DataFrame, total_records: int, cfg_s: dict, 
-                ar_window_s: int, N_size: int, ar_size_list: List[float], ar_threshold_size: float, 
-                ar_size: float, prob_tai_sliding: float, prob_xiu_sliding: float, 
-                mean_tai: float, std_tai: float, T_sat_tai: float, T_sat_xiu: float, 
-                is_size_cooling: bool, size_loss_streak: int, 
-                is_size_win_streak_pause: bool, size_win_streak: int, 
-                buy_threshold_size: float, active_tai_len: int, active_tai_state: bool, 
-                tai_streak_stats: dict, total_tai_transitions: int, 
-                pred_streak_tai_switch: Any, pred_streak_tai_continue: Any, 
-                is_high_conf_tai: bool, predicted_size: str, pred_tai: float) -> tuple:
+    def analyze(history: List[Dict[str, Any]], cfg_s: dict, N_size: int, ar_size_list: List[float], 
+                ar_threshold_size: float, mean_tai: float, std_tai: float, T_sat_tai: float, T_sat_xiu: float, 
+                is_size_cooling: bool, size_loss_streak: int, is_size_win_streak_pause: bool, 
+                size_win_streak: int, buy_threshold_size: float, pred_tai: float) -> tuple:
         
         size_decision = "BỎ QUA"
         size_confidence = 50
@@ -76,11 +70,12 @@ class SizeAnalyzer:
             size_decision = "MUA TÀI" if predicted_is_tai else "MUA XỈU"
             size_confidence = min(base_confidence, 70)
         else:
-            if prob_tai_sliding_sz >= buy_threshold_size and ar_smooth_size < ar_threshold_size and prob_tai_sliding_sz >= 0.60:
+            min_prob = cfg_s.get("min_probability_threshold", 0.60)
+            if prob_tai_sliding_sz >= buy_threshold_size and ar_smooth_size < ar_threshold_size and prob_tai_sliding_sz >= min_prob:
                 size_decision = "MUA TÀI"
                 size_confidence = int(prob_tai_sliding_sz * 100)
                 size_rationale = f"Xác suất Tài {prob_tai_sliding_sz*100:.1f}% ≥{buy_threshold_size*100:.1f}%, AR trung bình, ưu tiên cao."
-            elif prob_xiu_sliding_sz >= buy_threshold_size and ar_smooth_size < ar_threshold_size and prob_xiu_sliding_sz >= 0.60:
+            elif prob_xiu_sliding_sz >= buy_threshold_size and ar_smooth_size < ar_threshold_size and prob_xiu_sliding_sz >= min_prob:
                 size_decision = "MUA XỈU"
                 size_confidence = int(prob_xiu_sliding_sz * 100)
                 size_rationale = f"Xác suất Xỉu {prob_xiu_sliding_sz*100:.1f}% ≥{buy_threshold_size*100:.1f}%, AR trung bình, ưu tiên cao."
@@ -91,12 +86,12 @@ class SizeAnalyzer:
                     is_sat_size = (sliding_pred_size == "Tai" and prob_tai_sliding_sz >= T_sat_tai) or (sliding_pred_size == "Xiu" and prob_xiu_sliding_sz >= T_sat_xiu)
                     if not is_sat_size:
                         prob_to_check = prob_tai_sliding_sz if sliding_pred_size == "Tai" else prob_xiu_sliding_sz
-                        if prob_to_check >= 0.60:
+                        if prob_to_check >= min_prob:
                             size_decision = "MUA TÀI" if sliding_pred_size == "Tai" else "MUA XỈU"
                             size_confidence = min(int((0.6 * (prob_tai_sliding_sz if sliding_pred_size == "Tai" else prob_xiu_sliding_sz) + 0.4 * (pred_tai if sliding_pred_size == "Tai" else 1.0 - pred_tai)) * 100 * 1.05), 70)
-                            size_rationale = f"Consensus: {sliding_pred_size} (≥60%)"
+                            size_rationale = f"Consensus: {sliding_pred_size} (≥{min_prob*100:.0f}%)"
                         else:
-                            size_rationale = "Xác suất < 60%, bỏ qua"
+                            size_rationale = f"Xác suất < {min_prob*100:.0f}%, bỏ qua"
                     else:
                         size_rationale = "Bão hòa, bỏ qua"
                 else:

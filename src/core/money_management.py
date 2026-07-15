@@ -211,7 +211,12 @@ class MoneyManager:
             martingale_cap = 0
             base_pct = 0.0
 
-            if win_rate >= 0.60:
+            if win_rate >= 0.70:
+                k_full = compute_kelly_fraction(win_rate)
+                base_pct = min(k_full / 3.0, 0.05)
+                enable_martingale = True
+                martingale_cap = 3   # x2, x4, x8 (3 lần)
+            elif win_rate >= 0.60:
                 k_full = compute_kelly_fraction(win_rate)
                 base_pct = min(k_full / 2.0, 0.10)
                 enable_martingale = False

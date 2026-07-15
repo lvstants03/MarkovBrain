@@ -7,6 +7,8 @@ from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
+_last_configs = {}
+
 def _load_config(file_name: str, defaults: dict) -> dict:
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), file_name)
     if not os.path.exists(config_path):
@@ -37,6 +39,12 @@ def _load_config(file_name: str, defaults: dict) -> dict:
                     validated[k] = default_val
             else:
                 validated[k] = val
+        
+        # Chỉ in log khi cấu hình thực sự thay đổi hoặc nạp lần đầu
+        if _last_configs.get(file_name) != validated:
+            _last_configs[file_name] = validated.copy()
+            logger.info(f"Đã nạp bộ tham số mới từ {file_name}: {json.dumps(validated, ensure_ascii=False)}")
+            
         return validated
     except Exception as e:
         logger.warning(f"Error loading {file_name}, using defaults: {e}")

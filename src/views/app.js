@@ -1009,74 +1009,31 @@ function generateAutomationCodes() {
     
     // 1. Console Code
     const consoleCode = `(function() {
-    const OriginalWebSocket = window.WebSocket;
-    window.WebSocket = function(url, protocols) {
-        if (url.includes("token=")) {
-            try {
-                const token = url.split("token=")[1].split("&")[0];
-                fetch('${host}/api/config-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        token: token,
-                        cf_auth_token: null,
-                        cookie: document.cookie || null
-                    })
-                })
-                .then(r => r.json())
-                .then(d => {
-                    console.log("Successfully synced token with local bot!", d);
-                })
-                .catch(err => {
-                    console.error("Failed to sync token with local bot:", err);
-                });
-            } catch(e) {
-                console.error("Parsing token error:", e);
-            }
-        }
-        return new OriginalWebSocket(url, protocols);
-    };
-    window.WebSocket.prototype = OriginalWebSocket.prototype;
-    console.log("Token Auto-Sync active in Console! Go switch lottery games to trigger sync.");
-
-    // Poll for reload commands from local server
-    setInterval(function() {
-        fetch('${host}/api/script/command')
-        .then(r => r.json())
-        .then(d => {
-            if (d && d.command === 'reload') {
-                console.log("Received reload command from local bot! Reloading page...");
-                window.location.reload();
-            }
-        })
-        .catch(e => {});
-    }, 2000);
-})();`;
-    
-    // 2. Bookmarklet Code (minified and wrapped in javascript:)
-    const bookmarkletCode = `javascript:(function(){const O=window.WebSocket;window.WebSocket=function(u,p){if(u.includes("token=")){try{const t=u.split("token=")[1].split("&")[0];fetch("${host}/api/config-token",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:t,cf_auth_token:null,cookie:document.cookie||null})}).then(r=>r.json()).then(d=>alert("Đồng bộ token thành công!")).catch(e=>alert("Lỗi đồng bộ: "+e))}catch(e){}}return new O(u,p)};window.WebSocket.prototype=O.prototype;alert("Đã kích hoạt auto-intercept. Vui lòng click menu chọn lại game để đồng bộ!");setInterval(function(){fetch("${host}/api/script/command").then(r=>r.json()).then(d=>{if(d&&d.command==='reload')window.location.reload()}).catch(e=>{})},2000);})();`;
-    
-    // 3. Tampermonkey script code
-    const tampermonkeyCode = `// ==UserScript==
-// @name         EE88 Token Auto-Sync
-// @namespace    http://tampermonkey.net/
-// @version      0.3
-// @description  Tu dong dong bo hoa token va HTTP Auth EE88 voi local Dashboard & nhan lenh tai lai trang
-// @match        *://*.ee8833.me/*
-// @grant        none
-// @run-at       document-start
-// ==/UserScript==
-
-(function() {
-    'use strict';
-
     let storedToken = null;
     let storedCfAuthToken = null;
+    let isUnloading = false;
+    let reloadTimeout = null;
 
-    // Gui thong tin WebSocket Token, cf-auth-token va Cookie ve local bot
+    window.addEventListener('beforeunload', () => {
+        isUnloading = true;
+    });
+
+    function safeReload(reason) {
+        if (isUnloading) return;
+        if (reloadTimeout) return;
+        console.log("[Auto-Sync] Yêu cầu tải lại trang do: " + reason + ". Đang đợi 3s...");
+        reloadTimeout = setTimeout(() => {
+            if (!isUnloading) {
+                window.location.reload();
+            }
+        }, 3000);
+    }
+
+    const originalFetch = window.fetch;
+
     function syncToBot() {
         if (!storedToken) return;
-        fetch('${host}/api/config-token', {
+        originalFetch('${host}/api/config-token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1094,10 +1051,10 @@ function generateAutomationCodes() {
         });
     }
 
-    // 1. Hook WebSocket (Bat WS Token)
     const OriginalWebSocket = window.WebSocket;
     window.WebSocket = function(url, protocols) {
-        if (url.includes("token=")) {
+        const isMainWs = url.includes("token=");
+        if (isMainWs) {
             try {
                 storedToken = url.split("token=")[1].split("&")[0];
                 syncToBot();
@@ -1105,19 +1062,31 @@ function generateAutomationCodes() {
                 console.error("Error extracting token:", e);
             }
         }
-        return new OriginalWebSocket(url, protocols);
+        const ws = new OriginalWebSocket(url, protocols);
+        if (isMainWs) {
+            ws.addEventListener('close', () => {
+                if (!isUnloading) safeReload('WebSocket đóng');
+            });
+            ws.addEventListener('error', () => {
+                if (!isUnloading) safeReload('WebSocket lỗi');
+            });
+        }
+        return ws;
     };
     window.WebSocket.prototype = OriginalWebSocket.prototype;
 
-    // 2. Hook Fetch (Bat cf-auth-token tu yeu cau Fetch)
-    const originalFetch = window.fetch;
     window.fetch = async function(resource, init) {
         if (init && init.headers) {
             let cfToken = null;
-            if (init.headers['cf-auth-token']) {
-                cfToken = init.headers['cf-auth-token'];
-            } else if (init.headers.get && typeof init.headers.get === 'function') {
+            if (init.headers.get && typeof init.headers.get === 'function') {
                 cfToken = init.headers.get('cf-auth-token');
+            } else {
+                for (let key in init.headers) {
+                    if (key.toLowerCase() === 'cf-auth-token') {
+                        cfToken = init.headers[key];
+                        break;
+                    }
+                }
             }
             if (cfToken && cfToken !== storedCfAuthToken) {
                 storedCfAuthToken = cfToken;
@@ -1128,33 +1097,164 @@ function generateAutomationCodes() {
         return originalFetch.apply(this, arguments);
     };
 
-    // 3. Hook XMLHttpRequest (Bat cf-auth-token tu yeu cau Axios/XHR)
     const OriginalXHR = window.XMLHttpRequest;
-    window.XMLHttpRequest = function() {
-        const xhr = new OriginalXHR();
-        const originalSetRequestHeader = xhr.setRequestHeader;
-
-        xhr.setRequestHeader = function(header, value) {
-            if (header && header.toLowerCase() === 'cf-auth-token') {
-                if (value !== storedCfAuthToken) {
-                    storedCfAuthToken = value;
-                    console.log("Captured cf-auth-token (XHR):", value);
-                    syncToBot();
-                }
+    const originalSetRequestHeader = OriginalXHR.prototype.setRequestHeader;
+    OriginalXHR.prototype.setRequestHeader = function(header, value) {
+        if (header && header.toLowerCase() === 'cf-auth-token') {
+            if (value !== storedCfAuthToken) {
+                storedCfAuthToken = value;
+                console.log("Captured cf-auth-token (XHR):", value);
+                syncToBot();
             }
-            return originalSetRequestHeader.apply(this, arguments);
-        };
-        return xhr;
+        }
+        return originalSetRequestHeader.apply(this, arguments);
     };
 
-    // 4. Nhan lenh tai lai trang tu local bot
     setInterval(function() {
-        fetch('${host}/api/script/command')
+        originalFetch('${host}/api/script/command')
         .then(r => r.json())
         .then(d => {
             if (d && d.command === 'reload') {
                 console.log("Received reload command from local bot! Reloading page...");
+                safeReload('Lệnh từ local bot');
+            }
+        })
+        .catch(e => {});
+    }, 2000);
+})();`;
+    
+    // 2. Bookmarklet Code (minified and wrapped in javascript:)
+    const bookmarkletCode = `javascript:(function(){let sT=null,sC=null,isU=false,rT=null;window.addEventListener("beforeunload",()=>isU=true);function sR(r){if(isU||rT)return;rT=setTimeout(()=>{if(!isU)window.location.reload()},3000)}const oF=window.fetch;function sB(){if(!sT)return;oF("${host}/api/config-token",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:sT,cf_auth_token:sC||null,cookie:document.cookie||null})})}const O=window.WebSocket;window.WebSocket=function(u,p){const m=u.includes("token=");if(m){try{sT=u.split("token=")[1].split("&")[0];sB()}catch(e){}}const w=new O(u,p);if(m){w.addEventListener("close",()=>sR("WS close"));w.addEventListener("error",()=>sR("WS error"))}return w};window.WebSocket.prototype=O.prototype;window.fetch=async function(r,i){if(i&&i.headers){let c=null;if(i.headers.get&&typeof i.headers.get==="function"){c=i.headers.get("cf-auth-token")}else{for(let k in i.headers){if(k.toLowerCase()==="cf-auth-token"){c=i.headers[k];break}}}if(c&&c!==sC){sC=c;sB()}}return oF.apply(this,arguments)};const OX=window.XMLHttpRequest;const oS=OX.prototype.setRequestHeader;OX.prototype.setRequestHeader=function(h,v){if(h&&h.toLowerCase()==="cf-auth-token"){if(v!==sC){sC=v;sB()}}return oS.apply(this,arguments)};alert("Đã kích hoạt auto-intercept! Vui lòng chọn lại game để đồng bộ.");setInterval(function(){oF("${host}/api/script/command").then(r=>r.json()).then(d=>{if(d&&d.command==="reload")sR("Local Command")}).catch(e=>{})},2000);})();`;
+    
+    // 3. Tampermonkey script code
+    const tampermonkeyCode = `// ==UserScript==
+// @name         EE88 Token Auto-Sync với Auto-Reload
+// @namespace    http://tampermonkey.net/
+// @version      1.1
+// @description  Tự động đồng bộ token và reload trang an toàn khi mất kết nối
+// @match        *://*.ee8833.me/*
+// @grant        none
+// @run-at       document-start
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    let storedToken = null;
+    let storedCfAuthToken = null;
+    let isUnloading = false;
+    let reloadTimeout = null;
+
+    window.addEventListener('beforeunload', () => {
+        isUnloading = true;
+    });
+
+    function safeReload(reason) {
+        if (isUnloading) return;
+        if (reloadTimeout) return;
+        console.log("[Auto-Sync] Yêu cầu tải lại trang do: " + reason + ". Đang đợi 3s...");
+        reloadTimeout = setTimeout(() => {
+            if (!isUnloading) {
                 window.location.reload();
+            }
+        }, 3000);
+    }
+
+    const originalFetch = window.fetch;
+
+    function syncToBot() {
+        if (!storedToken) return;
+        originalFetch('${host}/api/config-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                token: storedToken,
+                cf_auth_token: storedCfAuthToken || null,
+                cookie: document.cookie || null
+            })
+        })
+        .then(r => r.json())
+        .then(d => {
+            console.log("Successfully synced with local bot!", d);
+        })
+        .catch(err => {
+            console.error("Failed to sync with local bot:", err);
+        });
+    }
+
+    const OriginalWebSocket = window.WebSocket;
+    window.WebSocket = function(url, protocols) {
+        const isMainWs = url.includes("token=");
+        if (isMainWs) {
+            try {
+                storedToken = url.split("token=")[1].split("&")[0];
+                syncToBot();
+            } catch (e) {
+                console.error("Error extracting token:", e);
+            }
+        }
+
+        const ws = new OriginalWebSocket(url, protocols);
+
+        if (isMainWs) {
+            ws.addEventListener('close', function(event) {
+                if (!isUnloading) {
+                    safeReload('WebSocket đóng');
+                }
+            });
+            ws.addEventListener('error', function(error) {
+                if (!isUnloading) {
+                    safeReload('WebSocket lỗi');
+                }
+            });
+        }
+
+        return ws;
+    };
+    window.WebSocket.prototype = OriginalWebSocket.prototype;
+
+    window.fetch = async function(resource, init) {
+        if (init && init.headers) {
+            let cfToken = null;
+            if (init.headers.get && typeof init.headers.get === 'function') {
+                cfToken = init.headers.get('cf-auth-token');
+            } else {
+                for (let key in init.headers) {
+                    if (key.toLowerCase() === 'cf-auth-token') {
+                        cfToken = init.headers[key];
+                        break;
+                    }
+                }
+            }
+            if (cfToken && cfToken !== storedCfAuthToken) {
+                storedCfAuthToken = cfToken;
+                console.log("Captured cf-auth-token (Fetch):", cfToken);
+                syncToBot();
+            }
+        }
+        return originalFetch.apply(this, arguments);
+    };
+
+    const OriginalXHR = window.XMLHttpRequest;
+    const originalSetRequestHeader = OriginalXHR.prototype.setRequestHeader;
+    OriginalXHR.prototype.setRequestHeader = function(header, value) {
+        if (header && header.toLowerCase() === 'cf-auth-token') {
+            if (value !== storedCfAuthToken) {
+                storedCfAuthToken = value;
+                console.log("Captured cf-auth-token (XHR):", value);
+                syncToBot();
+            }
+        }
+        return originalSetRequestHeader.apply(this, arguments);
+    };
+
+    setInterval(function() {
+        originalFetch('${host}/api/script/command')
+        .then(r => r.json())
+        .then(d => {
+            if (d && d.command === 'reload') {
+                console.log("Received reload command from local bot! Reloading page...");
+                safeReload('Lệnh từ local bot');
             }
         })
         .catch(e => {});

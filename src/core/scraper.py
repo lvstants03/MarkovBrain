@@ -439,6 +439,11 @@ class WebSocketScraper:
         urls = [url_info, url_draw]
 
         origin_url = f"https://{domain}" if domain else f"https://{config.TARGET_DOMAIN}"
+        
+        stored_http = store.get_http_headers()
+        cf_auth_token = stored_http.get("cf_auth_token") or (f"Bearer.{token}" if token else "")
+        cookie = stored_http.get("cookie")
+
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
@@ -455,6 +460,10 @@ class WebSocketScraper:
         if token:
             headers["token"] = token
             headers["Authorization"] = f"Bearer {token}"
+        if cf_auth_token:
+            headers["cf-auth-token"] = cf_auth_token
+        if cookie:
+            headers["cookie"] = cookie
 
         imported_count = 0
 
