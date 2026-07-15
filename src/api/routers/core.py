@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Query, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
@@ -36,7 +37,7 @@ def get_next_issue_code(last_issue: str) -> str:
 async def get_statistics(limit: int = Query(default=500, ge=1, le=10000)):
     # Lay ket qua phan tich thong ke xac suat Chan/Le, Tai/Xiu
     history = store.get_history(limit=limit)
-    stats = ProbabilityAnalyzer.analyze(history)
+    stats = await asyncio.to_thread(ProbabilityAnalyzer.analyze, history)
     
     # Predict next issue and save to store for win rate tracking
     if history:
@@ -157,6 +158,54 @@ async def import_history(payload: dict):
         "status": "success",
         "imported_records": imported_count,
         "total_in_store": store.get_count()
+    }
+
+
+@router.get("/health")
+async def health_check():
+    import time
+    import logging
+    
+    # 1. Kiem tra Scraper (giam sat chay ngam)
+    ws_status = getattr(scraper, "connection_status", "unknown")
+    last_msg_time = getattr(scraper, "last_received_time", 0)
+    last_msg_age = time.time() - last_msg_time if last_msg_time > 0 else 9999
+    scraper_running = getattr(scraper, "is_running", False)
+    
+    # 2. Kiem tra Database / Store
+    total_records = store.get_count()
+    use_redis = getattr(store, "use_redis", False)
+    redis_connected = False
+    if use_redis and getattr(store, "redis_client", None):
+        try:
+            store.redis_client.ping()
+            redis_connected = True
+        except Exception:
+            redis_connected = False
+            
+    # 3. Kiem tra xem he thong co khoe manh khong
+    # He thong khoe manh neu scraper dang chay, websocket ket noi hoac co nhan tin nhan trong 3 phut qua
+    is_healthy = scraper_running and (ws_status == "connected" or last_msg_age < 180)
+    
+    # Chi ghi log warning khi co loi, khong log thuong le khi binh thuong
+    if not is_healthy:
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"[Healthcheck Failed] WS Status: {ws_status}, Scraper Running: {scraper_running}, "
+            f"Last Message Age: {last_msg_age:.1f}s, Total Records: {total_records}"
+        )
+        
+    return {
+        "status": "healthy" if is_healthy else "unhealthy",
+        "timestamp": time.time(),
+        "details": {
+            "scraper_running": scraper_running,
+            "websocket_status": ws_status,
+            "last_message_age_seconds": round(last_msg_age, 1) if last_msg_time > 0 else None,
+            "total_records_in_store": total_records,
+            "use_redis": use_redis,
+            "redis_connected": redis_connected if use_redis else None
+        }
     }
 
 

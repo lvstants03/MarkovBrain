@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Any
@@ -11,16 +11,10 @@ logger = logging.getLogger(__name__)
 
 class ParityAnalyzer:
     @staticmethod
-    def analyze(history: List[Dict[str, Any]], df: pd.DataFrame, total_records: int, cfg_p: dict, 
-                ar_window_p: int, N_parity: int, ar_parity_list: List[float], ar_threshold_parity: float, 
-                ar_parity: float, prob_le_sliding: float, prob_chan_sliding: float, 
-                mean_le: float, std_le: float, T_sat_le: float, T_sat_chan: float, 
-                is_parity_cooling: bool, parity_loss_streak: int, 
-                is_parity_win_streak_pause: bool, parity_win_streak: int, 
-                buy_threshold_parity: float, active_le_len: int, active_le_state: bool, 
-                le_streak_stats: dict, total_le_transitions: int, 
-                pred_streak_le_switch: Any, pred_streak_le_continue: Any, 
-                is_high_conf_le: bool, predicted_parity: str, pred_le: float) -> tuple:
+    def analyze(history: List[Dict[str, Any]], cfg_p: dict, N_parity: int, ar_parity_list: List[float], 
+                ar_threshold_parity: float, mean_le: float, std_le: float, T_sat_le: float, T_sat_chan: float, 
+                is_parity_cooling: bool, parity_loss_streak: int, is_parity_win_streak_pause: bool, 
+                parity_win_streak: int, buy_threshold_parity: float, pred_le: float) -> tuple:
         
         parity_decision = "BỎ QUA"
         parity_confidence = 50
@@ -76,11 +70,12 @@ class ParityAnalyzer:
             parity_decision = "MUA LẺ" if predicted_is_le else "MUA CHẴN"
             parity_confidence = min(base_confidence, 70)
         else:
-            if prob_le_sliding_par >= buy_threshold_parity and ar_smooth_parity < ar_threshold_parity and prob_le_sliding_par >= 0.60:
+            min_prob = cfg_p.get("min_probability_threshold", 0.60)
+            if prob_le_sliding_par >= buy_threshold_parity and ar_smooth_parity < ar_threshold_parity and prob_le_sliding_par >= min_prob:
                 parity_decision = "MUA LẺ"
                 parity_confidence = int(prob_le_sliding_par * 100)
                 parity_rationale = f"Xác suất Lẻ {prob_le_sliding_par*100:.1f}% ≥{buy_threshold_parity*100:.1f}%, AR trung bình, ưu tiên cao."
-            elif prob_chan_sliding_par >= buy_threshold_parity and ar_smooth_parity < ar_threshold_parity and prob_chan_sliding_par >= 0.60:
+            elif prob_chan_sliding_par >= buy_threshold_parity and ar_smooth_parity < ar_threshold_parity and prob_chan_sliding_par >= min_prob:
                 parity_decision = "MUA CHẴN"
                 parity_confidence = int(prob_chan_sliding_par * 100)
                 parity_rationale = f"Xác suất Chẵn {prob_chan_sliding_par*100:.1f}% ≥{buy_threshold_parity*100:.1f}%, AR trung bình, ưu tiên cao."
@@ -91,12 +86,12 @@ class ParityAnalyzer:
                     is_sat = (sliding_pred == "Le" and prob_le_sliding_par >= T_sat_le) or (sliding_pred == "Chan" and prob_chan_sliding_par >= T_sat_chan)
                     if not is_sat:
                         prob_to_check = prob_le_sliding_par if sliding_pred == "Le" else prob_chan_sliding_par
-                        if prob_to_check >= 0.60:
+                        if prob_to_check >= min_prob:
                             parity_decision = "MUA LẺ" if sliding_pred == "Le" else "MUA CHẴN"
                             parity_confidence = min(int((0.6 * (prob_le_sliding_par if sliding_pred == "Le" else prob_chan_sliding_par) + 0.4 * (pred_le if sliding_pred == "Le" else 1.0 - pred_le)) * 100 * 1.05), 70)
-                            parity_rationale = f"Consensus: {sliding_pred} (≥60%)"
+                            parity_rationale = f"Consensus: {sliding_pred} (≥{min_prob*100:.0f}%)"
                         else:
-                            parity_rationale = "Xác suất < 60%, bỏ qua"
+                            parity_rationale = f"Xác suất < {min_prob*100:.0f}%, bỏ qua"
                     else:
                         parity_rationale = "Bão hòa, bỏ qua"
                 else:

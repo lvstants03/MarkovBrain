@@ -73,7 +73,8 @@ class ProbabilityAnalyzer:
             "win_rate_filter_min_total": 5,
             "win_rate_filter_threshold": 0.50,
             "streak_safety_trap_multiplier": 2,
-            "streak_safety_trap_min": 4
+            "streak_safety_trap_min": 4,
+            "min_probability_threshold": 0.60
         }
         
         size_defaults = {
@@ -105,7 +106,8 @@ class ProbabilityAnalyzer:
             "win_rate_filter_min_total": 5,
             "win_rate_filter_threshold": 0.50,
             "streak_safety_trap_multiplier": 2,
-            "streak_safety_trap_min": 4
+            "streak_safety_trap_min": 4,
+            "min_probability_threshold": 0.60
         }
 
         cfg_p = _load_config("analyzer_parity_config.json", parity_defaults)
@@ -318,10 +320,21 @@ class ProbabilityAnalyzer:
 
         # ===== COOLING-OFF & WIN STREAK =====
         try:
-            pred_hist = store.get_prediction_history(limit=10)
+            pred_hist_30 = store.get_prediction_history(limit=30)
         except Exception as e:
             logger.warning(f"[Cooling] Could not fetch: {e}")
-            pred_hist = []
+            pred_hist_30 = []
+
+        pred_hist = pred_hist_30[:10]
+
+        # Tính tỷ lệ thắng 30 kỳ gần nhất
+        total_p_bets = sum(1 for p in pred_hist_30 if p.get("status_parity") in ("win", "lose"))
+        wins_p = sum(1 for p in pred_hist_30 if p.get("status_parity") == "win")
+        wr_30_parity = (wins_p / total_p_bets) if total_p_bets > 0 else 0.50
+
+        total_s_bets = sum(1 for p in pred_hist_30 if p.get("status_size") in ("win", "lose"))
+        wins_s = sum(1 for p in pred_hist_30 if p.get("status_size") == "win")
+        wr_30_size = (wins_s / total_s_bets) if total_s_bets > 0 else 0.50
 
         parity_loss_streak = 0
         for p in pred_hist:
@@ -330,9 +343,14 @@ class ProbabilityAnalyzer:
             elif p.get("status_parity") in ("win", "ignored"):
                 break
         total_parity = sum(1 for p in pred_hist if p.get("status_parity") in ("win", "lose"))
-        is_parity_cooling = parity_loss_streak >= cfg_p["cooling_off_loss_limit"]
-        is_parity_cooling_3 = parity_loss_streak >= cfg_p["cooling_off_loss_limit"]
-        is_parity_cooling_2 = parity_loss_streak >= max(1, cfg_p["cooling_off_loss_limit"] - 1)
+        
+        # Cooling limit động dựa trên WR 30 kỳ
+        cooling_limit_p = cfg_p.get("cooling_off_loss_limit", 2)
+        if wr_30_parity < 0.50:
+            cooling_limit_p = 3
+        is_parity_cooling = parity_loss_streak >= cooling_limit_p
+        is_parity_cooling_3 = parity_loss_streak >= cooling_limit_p
+        is_parity_cooling_2 = parity_loss_streak >= max(1, cooling_limit_p - 1)
 
         size_loss_streak = 0
         for p in pred_hist:
@@ -341,9 +359,14 @@ class ProbabilityAnalyzer:
             elif p.get("status_size") in ("win", "ignored"):
                 break
         total_size = sum(1 for p in pred_hist if p.get("status_size") in ("win", "lose"))
-        is_size_cooling = size_loss_streak >= cfg_s["cooling_off_loss_limit"]
-        is_size_cooling_3 = size_loss_streak >= cfg_s["cooling_off_loss_limit"]
-        is_size_cooling_2 = size_loss_streak >= max(1, cfg_s["cooling_off_loss_limit"] - 1)
+        
+        # Cooling limit động dựa trên WR 30 kỳ
+        cooling_limit_s = cfg_s.get("cooling_off_loss_limit", 2)
+        if wr_30_size < 0.50:
+            cooling_limit_s = 3
+        is_size_cooling = size_loss_streak >= cooling_limit_s
+        is_size_cooling_3 = size_loss_streak >= cooling_limit_s
+        is_size_cooling_2 = size_loss_streak >= max(1, cooling_limit_s - 1)
 
         parity_win_streak = 0
         for p in pred_hist:
@@ -368,21 +391,19 @@ class ProbabilityAnalyzer:
         # --- Gọi Parity Heuristics ---
         (parity_decision, parity_confidence, parity_rationale, 
          engine_used_parity, sliding_pred, markov_pred) = ParityAnalyzer.analyze(
-            history, df, total_records, cfg_p, ar_window_p, N_parity, ar_parity_list, ar_threshold_parity,
-            ar_parity, prob_le_sliding, prob_chan_sliding, mean_le, std_le, T_sat_le, T_sat_chan,
+            history, cfg_p, N_parity, ar_parity_list, ar_threshold_parity,
+            mean_le, std_le, T_sat_le, T_sat_chan,
             is_parity_cooling, parity_loss_streak, is_parity_win_streak_pause, parity_win_streak,
-            buy_threshold_parity, active_le_len, active_le_state, le_streak_stats, total_le_transitions,
-            pred_streak_le_switch, pred_streak_le_continue, is_high_conf_le, predicted_parity, pred_le
+            buy_threshold_parity, pred_le
         )
 
         # --- Gọi Size Heuristics ---
         (size_decision, size_confidence, size_rationale, 
          engine_used_size, sliding_pred_size, markov_pred_size) = SizeAnalyzer.analyze(
-            history, df, total_records, cfg_s, ar_window_s, N_size, ar_size_list, ar_threshold_size,
-            ar_size, prob_tai_sliding, prob_xiu_sliding, mean_tai, std_tai, T_sat_tai, T_sat_xiu,
+            history, cfg_s, N_size, ar_size_list, ar_threshold_size,
+            mean_tai, std_tai, T_sat_tai, T_sat_xiu,
             is_size_cooling, size_loss_streak, is_size_win_streak_pause, size_win_streak,
-            buy_threshold_size, active_tai_len, active_tai_state, tai_streak_stats, total_tai_transitions,
-            pred_streak_tai_switch, pred_streak_tai_continue, is_high_conf_tai, predicted_size, pred_tai
+            buy_threshold_size, pred_tai
         )
 
         # ============================================================
@@ -467,7 +488,22 @@ class ProbabilityAnalyzer:
             "active_le_len": active_le_len, "active_le_state": active_le_state,
             "active_tai_len": active_tai_len, "active_tai_state": active_tai_state,
             "max_le_streak": max_le_streak, "max_tai_streak": max_tai_streak,
-            "ar_parity": ar_parity, "ar_size": ar_size
+            "ar_smooth_parity": float(np.mean(ar_parity_list)) if ar_parity_list else ar_parity,
+            "ar_threshold_parity": ar_threshold_parity,
+            "ar_smooth_size": float(np.mean(ar_size_list)) if ar_size_list else ar_size,
+            "ar_threshold_size": ar_threshold_size,
+            "prob_le_sliding": prob_le_sliding,
+            "prob_chan_sliding": prob_chan_sliding,
+            "prob_tai_sliding": prob_tai_sliding,
+            "prob_xiu_sliding": prob_xiu_sliding,
+            "T_sat_le": T_sat_le, "T_sat_chan": T_sat_chan,
+            "T_sat_tai": T_sat_tai, "T_sat_xiu": T_sat_xiu,
+            "buy_threshold_parity": buy_threshold_parity,
+            "buy_threshold_size": buy_threshold_size,
+            "markov": {
+                "pred_le": pred_le,
+                "pred_tai": pred_tai
+            }
         }
 
         if getattr(config, "GEMINI_API_KEY", "") and total_records >= 10:

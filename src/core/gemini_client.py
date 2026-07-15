@@ -1,4 +1,4 @@
-﻿import pandas as pd
+import pandas as pd
 import json
 import time
 import logging
@@ -14,9 +14,16 @@ class GeminiClient:
     _last_call_time = 0
     _consecutive_failures = 0
     _cache_ttl = 300
+    _rate_limit_until = 0.0
 
     @staticmethod
     def call_with_retry(df: pd.DataFrame, stats_context: dict, max_retries: int = 3) -> dict:
+        current_time = time.time()
+        if current_time < GeminiClient._rate_limit_until:
+            wait_rem = int(GeminiClient._rate_limit_until - current_time)
+            logger.warning(f"[Gemini] Rate limit active. Fast-falling back to local AI (Heuristics). Wait {wait_rem}s more.")
+            raise ValueError(f"Gemini API is temporarily blocked due to Rate Limit (cooling down, {wait_rem}s remaining)")
+
         api_key = getattr(config, "GEMINI_API_KEY", "")
         if not api_key:
             logger.error("GEMINI_API_KEY is not set in config.")
@@ -38,32 +45,42 @@ class GeminiClient:
             })
         draws_list.reverse()
 
-        pred_le = stats_context.get("markov", {}).get("pred_le", 0.5)
-        pred_tai = stats_context.get("markov", {}).get("pred_tai", 0.5)
+        markov_data = stats_context.get("markov", {})
+        pred_le = markov_data.get("pred_le", 0.5)
+        pred_tai = markov_data.get("pred_tai", 0.5)
 
         prompt = (
             "Ban la chuyen gia phan tich chuoi so va du doan xac suat xo so chuyen nghiep.\n"
             "Nhiem vu cua ban la phan tich du lieu lich su cac ky quay so gan nhat va dua ra khuyen nghi thong minh "
             "(Du doan ky quay tiep theo) cho 2 thi truong: Chan/Le (Parity) va Tai/Xiu (Size).\n\n"
             f"Du lieu lich su 100 ky gan nhat (tu cu den moi nhat):\n{json.dumps(draws_list, ensure_ascii=False, indent=2)}\n\n"
-            "Boi canh thong ke hien tai cua he thong:\n"
-            f"- Chuoi bet hien tai:\n"
-            f"  + Chan/Le: {json.dumps(stats_context.get('streaks', {}).get('le_streak', {}), ensure_ascii=False)}\n"
-            f"  + Tai/Xiu: {json.dumps(stats_context.get('streaks', {}).get('tai_streak', {}), ensure_ascii=False)}\n"
-            f"- Du doan xac suat Markov ky tiep theo:\n"
-            f"  + Parity (Le): {pred_le * 100:.1f}% | (Chan): {(1 - pred_le) * 100:.1f}%\n"
-            f"  + Size (Tai): {pred_tai * 100:.1f}% | (Xiu): {(1 - pred_tai) * 100:.1f}%\n\n"
+            "Bao cao thong ke nang cao tu Heuristics cung cap:\n"
+            f"1. Trang thai bet hien tai:\n"
+            f"  - Chan/Le: Dang bet {'Le' if stats_context.get('active_le_state') else 'Chan'} tiep tuc {stats_context.get('active_le_len')} ky (Max bet lich su: {stats_context.get('max_le_streak')} ky).\n"
+            f"  - Tai/Xiu: Dang bet {'Tai' if stats_context.get('active_tai_state') else 'Xiu'} tiep tuc {stats_context.get('active_tai_len')} ky (Max bet lich su: {stats_context.get('max_tai_streak')} ky).\n"
+            f"2. Chi so dao chieu Ping-Pong (AR vs Nguong):\n"
+            f"  - Parity: AR hien tai {stats_context.get('ar_smooth_parity', 0.0)*100:.1f}% | Nguong chieu: {stats_context.get('ar_threshold_parity', 0.0)*100:.1f}%\n"
+            f"  - Size: AR hien tai {stats_context.get('ar_smooth_size', 0.0)*100:.1f}% | Nguong chieu: {stats_context.get('ar_threshold_size', 0.0)*100:.1f}%\n"
+            f"3. Xac suat truot (Sliding Window) & Nguong bao hoa:\n"
+            f"  - Parity (Le): {stats_context.get('prob_le_sliding', 0.5)*100:.1f}% | (Chan): {stats_context.get('prob_chan_sliding', 0.5)*100:.1f}% (Nguong bao hoa Le/Chan: {stats_context.get('T_sat_le', 0.5)*100:.1f}% / {stats_context.get('T_sat_chan', 0.5)*100:.1f}%)\n"
+            f"  - Size (Tai): {stats_context.get('prob_tai_sliding', 0.5)*100:.1f}% | (Xiu): {stats_context.get('prob_xiu_sliding', 0.5)*100:.1f}% (Nguong bao hoa Tai/Xiu: {stats_context.get('T_sat_tai', 0.5)*100:.1f}% / {stats_context.get('T_sat_xiu', 0.5)*100:.1f}%)\n"
+            f"4. Nguong mua dong cua Heuristics (Phan tich Standard Deviation):\n"
+            f"  - Parity: {stats_context.get('buy_threshold_parity', 0.5)*100:.1f}%\n"
+            f"  - Size: {stats_context.get('buy_threshold_size', 0.5)*100:.1f}%\n"
+            f"5. Xac suat du doan Markov ky quay ke tiep:\n"
+            f"  - Parity (Le): {pred_le * 100:.1f}% | (Chan): {(1 - pred_le) * 100:.1f}%\n"
+            f"  - Size (Tai): {pred_tai * 100:.1f}% | (Xiu): {(1 - pred_tai) * 100:.1f}%\n\n"
             "HAY DUA RA DU DOAN KY QUAY TIEP THEO (Issue tiep theo).\n"
             'Quy tac:\n'
-            '1. Ban co the du doan: "MUA LE", "MUA CHAN", hoac "BO QUA" cho Parity.\n'
-            '2. Ban co the du doan: "MUA TAI", "MUA XIU", hoac "BO QUA" cho Size.\n'
-            '3. Chi khuyen nghi MUA khi ban phat hien tin hieu xu huong lap lai phi tuyen tinh cuc ky ro rang.\n'
-            '4. Do tin cay (confidence) phai la so nguyen tu 0 den 100. Neu quyet dinh la "BO QUA", confidence nen o muc 50%.\n'
+            '1. Ban BAT BUOC phai du doan: "MUA LE" hoac "MUA CHAN" cho Parity. KHONG DUOC PHEP DU DOAN "BO QUA".\n'
+            '2. Ban BAT BUOC phai du doan: "MUA TAI" hoac "MUA XIU" cho Size. KHONG DUOC PHEP DU DOAN "BO QUA".\n'
+            '3. Khuyen nghi dua tren phan tich lech xac suat va tin hieu xu huong.\n'
+            '4. Do tin cay (confidence) phai la so nguyen tu 0 den 100.\n'
             '5. Rationale: Giai thich bang tieng Viet ngan gon (toi da 2 dong).\n\n'
             'Ban BAT BUOC phai tra ve JSON theo schema:\n'
             '{\n'
-            '  "parity": {"decision": "MUA LE | MUA CHAN | BO QUA", "confidence": 50, "rationale": "..."},\n'
-            '  "size": {"decision": "MUA TAI | MUA XIU | BO QUA", "confidence": 50, "rationale": "..."}\n'
+            '  "parity": {"decision": "MUA LE | MUA CHAN", "confidence": 70, "rationale": "..."},\n'
+            '  "size": {"decision": "MUA TAI | MUA XIU", "confidence": 70, "rationale": "..."}\n'
             '}'
         )
         payload = {
@@ -72,22 +89,24 @@ class GeminiClient:
         }
         headers = {"Content-Type": "application/json"}
 
-        base_delay = 2
         for attempt in range(max_retries):
             try:
                 logger.info(f"[Gemini] Attempt {attempt+1}/{max_retries}")
                 response = requests.post(url, json=payload, headers=headers, timeout=10)
-                if response.status_code == 429:
-                    delay = base_delay * (2 ** attempt)
-                    logger.warning(f"[Gemini] Rate limit (429). Retry in {delay}s")
-                    time.sleep(delay)
-                    continue
+                if response.status_code in (429, 403):
+                    GeminiClient._rate_limit_until = time.time() + 300
+                    logger.warning(f"[Gemini] Rate Limit / Quota Exceeded ({response.status_code}). Blocked for 5 minutes. Fallback to Local Heuristics.")
+                    raise ValueError(f"Gemini API rate limited: {response.status_code}")
                 response.raise_for_status()
                 data = response.json()
                 text = data["candidates"][0]["content"]["parts"][0]["text"]
                 return json.loads(text)
             except requests.exceptions.RequestException as e:
                 logger.warning(f"[Gemini] Request error: {e}")
+                if hasattr(e, 'response') and e.response is not None:
+                    if e.response.status_code in (429, 403):
+                        GeminiClient._rate_limit_until = time.time() + 300
+                        raise ValueError(f"Gemini API rate limited: {e.response.status_code}")
                 if attempt < max_retries - 1:
                     time.sleep(1)
                 continue

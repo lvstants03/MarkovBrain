@@ -404,6 +404,19 @@ class BetsMixin:
         daily_loss_count = daily_info.get(f"{market_type}_daily_loss_count", 0)
         pause_until = daily_info.get(f"{market_type}_pause_until", None)
 
+        # Reset neu da het han pause
+        if pause_until is not None and time.time() >= pause_until:
+            with self._lock:
+                if self.use_redis:
+                    self.redis_client.delete(self.key_parity_pause_until if market_type == "parity" else self.key_size_pause_until)
+                else:
+                    if market_type == "parity":
+                        self._parity_pause_until = None
+                    else:
+                        self._size_pause_until = None
+                    self._save_local_store()
+            pause_until = None
+
         is_stable = self.is_market_stable()
         prediction_stats_recent = self.get_prediction_stats_recent(15)
         win_rate = __import__("src.core.money_management", fromlist=["get_effective_win_rate"]).get_effective_win_rate(
@@ -411,6 +424,22 @@ class BetsMixin:
         )
 
         is_initial_phase = (self._initial_phase_remaining > 0)
+
+        # === CIRCUIT BREAKER: WR < 45% THÌ PAUSE 10 PHÚT ===
+        if not is_stable:
+            if pause_until is None:
+                pause_ts = time.time() + 10 * 60
+                with self._lock:
+                    if self.use_redis:
+                        self.redis_client.set(self.key_parity_pause_until if market_type == "parity" else self.key_size_pause_until, pause_ts)
+                    else:
+                        if market_type == "parity":
+                            self._parity_pause_until = pause_ts
+                        else:
+                            self._size_pause_until = pause_ts
+                        self._save_local_store()
+                logger.warning(f"[CIRCUIT BREAKER] {market_type} Win Rate < 45%. Pausing for 10m.")
+                return "paused"
 
         # === THÊM BỘ LỌC AN TOÀN CHO SIZE ===
         # Nếu là Size và win_rate < 50%, tự động bỏ qua để bảo vệ vốn

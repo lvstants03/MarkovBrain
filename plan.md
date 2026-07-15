@@ -61,40 +61,8 @@ Tự động điều chỉnh mức độ tự tin (Confidence Level) và tiền 
 * **Khung giờ bất lợi (Rủi ro/Hạn chế hoặc tạm dừng cược):**
   * `19:30 - 21:00` (7h30 - 9h tối)
 
-### 2.2 Logic đặt cược thông minh theo Tỷ lệ thắng (Dynamic Bet Sizing)
-* **Vòng có tỷ lệ cao:** Thêm logic phân tích xác suất. Đánh cược mạnh, ưu tiên dồn vốn vào những vòng có tỷ lệ thắng cao được dự đoán để mang lợi nhuận lớn về.
-* **Cơ chế bỏ qua:** Nếu vòng đấu không đạt ngưỡng tỷ lệ an toàn tối thiểu -> Bỏ qua hoàn toàn (Skip), không vào tiền để bảo toàn vốn.
 
----
 
-## 3. Khắc phục lỗi hoạt động không ổn định sau 10 phút chờ (Idling Bug)
-* **Mô tả hành vi lỗi:** Sau khi hệ thống ngưng hoạt động khoảng 10 phút (Idling), ở lần cược thứ 1, 2, 3, 4 ngay sau khi chạy lại, hệ thống mất khả năng tự động tính toán chính xác dữ liệu/số tiền cược.
-* **Cách sửa đề xuất:** Trong `place_demo_bet` (bets_mixin.py), sau khi lấy `pause_until`, thêm kiểm tra:
-  ```python
-  if pause_until is not None and time.time() >= pause_until:
-      pause_until = None
-  ```
-  Đồng thời, đảm bảo `is_market_stable` chỉ trả về False khi thực sự không ổn định (WR trượt 30 phiên < 45%), không bị ảnh hưởng bởi pause.
 
----
 
-## 4. Tự động tạm dừng khi gặp chuỗi thua (Circuit Breaker)
-* **Yêu cầu:** Thiết lập cơ chế tự động tạm dừng (Circuit Breaker) khi Win Rate của 30 phiên gần nhất tụt dưới 55% để bảo vệ tài khoản khỏi khủng hoảng chuỗi thua dài.
 
----
-
-## 5. Rà soát chéo đồng thuận giữa 2 Engine (Consensus Cross-check)
-* **Yêu cầu:** Viết hàm kiểm tra chéo (Cross-check) trước khi đặt cược nâng tiền để đảm bảo 2 engine (Gemini & Heuristics) thực sự đồng thuận trên cùng một bộ dữ liệu mới nhất, tránh việc sai lệch phiên hoặc cache kết quả cũ.
-
----
-
-## 6. Đánh dấu nguồn gốc dự đoán (Prediction Tagging) trong Log cược
-* **Yêu cầu:** Các lệnh cược khi xuất ra log console/tập tin đặt cược phải được đánh dấu rõ ràng nguồn gốc:
-  * Tag `[Gemini]` nếu chỉ Gemini chọn.
-  * Tag `[Heuristics]` nếu chỉ Heuristics chọn.
-  * Tag `[Combined]` nếu cả hai engine đồng thuận.
-
----
-
-## 7. Triển khai API `/api/health` & Giám sát chạy ngầm
-* **Yêu cầu:** Xây dựng tính năng Health Check chạy ngầm kiểm tra sức khỏe của các API và trạng thái bot. Hệ thống sẽ không ghi log thường lệ khi hoạt động bình thường, chỉ xuất log cảnh báo khi có lỗi.
