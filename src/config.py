@@ -30,4 +30,22 @@ class Config:
     AUTO_FETCH_INTERVAL = int(os.getenv("AUTO_FETCH_INTERVAL", 60))
     DRAWS_RESULT_HEADERS = {}
 
+    # Cau hinh DKM Pro (Dynamic Kelly & Martingale)
+    DKM_ENABLED = True
+    DKM_KELLY_FRACTION = 0.25
+    DKM_MAX_MARTINGALE_MULTIPLIER = 2.0
+    DKM_MAX_MARTINGALE_STEPS = 3
+    DKM_DAILY_LOSS_LIMIT_PERCENT = 5.0
+    DKM_MIN_BALANCE = 500000.0
+    DKM_TIME_SLOTS = [
+        {"start": "10:00", "end": "12:00", "weight": 1.0},
+        {"start": "15:00", "end": "16:00", "weight": 1.0}
+    ]
+    DKM_BLACKOUT_SLOTS = [
+        {"start": "19:30", "end": "21:00"}
+    ]
+
+    # Cau hinh Co So Du Lieu (PostgreSQL / SQLite)
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./lottery.db")
+
 config = Config()

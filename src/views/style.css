@@ -690,3 +690,225 @@ tr:hover td {
         padding: 1.25rem;
     }
 }
+
+/* ==========================================================================
+   TOAST NOTIFICATIONS & CUSTOM CONFIRMATION MODAL SYSTEM
+   ========================================================================== */
+
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+}
+
+.toast {
+    pointer-events: auto;
+    width: 360px;
+    max-width: calc(100vw - 40px);
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 14px 16px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    color: var(--text-main);
+    font-size: 0.88rem;
+    position: relative;
+    overflow: hidden;
+    animation: toastSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    transition: all 0.3s ease;
+}
+
+.toast.toast-hiding {
+    animation: toastSlideOut 0.3s ease forwards;
+}
+
+@keyframes toastSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(100%) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+}
+
+@keyframes toastSlideOut {
+    from {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(100%) scale(0.9);
+    }
+}
+
+.toast-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.toast-title {
+    font-weight: 700;
+    font-size: 0.92rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.toast-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 4px;
+}
+
+.toast-close:hover {
+    color: #ffffff;
+}
+
+.toast-body {
+    color: var(--text-muted);
+    line-height: 1.45;
+    word-break: break-word;
+    font-size: 0.84rem;
+}
+
+.toast-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.4);
+    width: 100%;
+    transform-origin: left;
+    animation: toastProgress linear forwards;
+}
+
+@keyframes toastProgress {
+    from { transform: scaleX(1); }
+    to { transform: scaleX(0); }
+}
+
+/* Toast Variants */
+.toast-success {
+    border-left: 4px solid var(--success);
+}
+.toast-success .toast-title {
+    color: var(--success);
+}
+.toast-success .toast-progress {
+    background: var(--success);
+}
+
+.toast-error {
+    border-left: 4px solid var(--danger);
+}
+.toast-error .toast-title {
+    color: var(--danger);
+}
+.toast-error .toast-progress {
+    background: var(--danger);
+}
+
+.toast-warning {
+    border-left: 4px solid var(--warning);
+}
+.toast-warning .toast-title {
+    color: var(--warning);
+}
+.toast-warning .toast-progress {
+    background: var(--warning);
+}
+
+.toast-info {
+    border-left: 4px solid var(--primary);
+}
+.toast-info .toast-title {
+    color: #818cf8;
+}
+.toast-info .toast-progress {
+    background: #818cf8;
+}
+
+.toast-prediction {
+    border-left: 4px solid #a855f7;
+    background: rgba(24, 15, 42, 0.96);
+}
+.toast-prediction .toast-title {
+    color: #c084fc;
+}
+.toast-prediction .toast-progress {
+    background: #c084fc;
+}
+
+.toast-bet {
+    border-left: 4px solid #f59e0b;
+    background: rgba(30, 24, 15, 0.96);
+}
+.toast-bet .toast-title {
+    color: #fbbf24;
+}
+.toast-bet .toast-progress {
+    background: #fbbf24;
+}
+
+/* CUSTOM CONFIRMATION MODAL */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(9, 13, 22, 0.85);
+    backdrop-filter: blur(8px);
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.confirm-modal-box {
+    width: 420px;
+    max-width: 90vw;
+    background: rgba(15, 23, 42, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+}
+
+.confirm-modal-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #f8fafc;
+    margin: 0;
+}
+
+.confirm-modal-message {
+    color: #94a3b8;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin-top: 10px;
+    margin-bottom: 20px;
+}
+
+.confirm-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+

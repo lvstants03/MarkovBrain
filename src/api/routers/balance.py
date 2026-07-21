@@ -14,7 +14,7 @@ class DemoConfigUpdate(BaseModel):
 
 @router.get("/balance")
 async def get_balance_info(page: int = Query(default=1, ge=1), limit: int = Query(default=10, ge=1, le=100)):
-    from src.core.money_management import MoneyManager, get_effective_win_rate, STRATEGY_LABELS
+    from src.core.money import MoneyManager, get_effective_win_rate, STRATEGY_LABELS
     balances = store.get_balances()
     
     # Sử dụng hàm get_demo_bets_paginated để phân trang
@@ -134,7 +134,7 @@ async def clear_demo_bets_endpoint():
 
 @router.post("/balance/config")
 async def update_demo_config(config_data: DemoConfigUpdate):
-    from src.core.money_management import MoneyManager, get_effective_win_rate, ALL_STRATEGIES
+    from src.core.money import MoneyManager, get_effective_win_rate, ALL_STRATEGIES
     success = True
 
     if config_data.amount is not None:

@@ -8,11 +8,12 @@ from src.config import config
 from src.database.mixins.records_mixin import RecordsMixin
 from src.database.mixins.predictions_mixin import PredictionsMixin
 from src.database.mixins.bets_mixin import BetsMixin
+from src.database.mixins.config_mixin import ConfigMixin
 
 logger = logging.getLogger(__name__)
 
 
-class DataStore(RecordsMixin, PredictionsMixin, BetsMixin):
+class DataStore(RecordsMixin, PredictionsMixin, BetsMixin, ConfigMixin):
     """
     Luu tru du lieu chinh: lich su quay so, du doan, cuoc gia lap, so du.
     Tach thanh cac Mixin de giu moi file duoi 750 dong:
@@ -36,7 +37,7 @@ class DataStore(RecordsMixin, PredictionsMixin, BetsMixin):
         self._demo_bets = {}
         self._http_cf_auth_token = ""
         self._http_cookie = ""
-        self._demo_bet_strategy = "fixed"
+        self._demo_bet_strategy = "dkm_adaptive_pro"
         self._parity_loss_streak = 0
         self._size_loss_streak = 0
         self._script_command = "none"
@@ -82,6 +83,13 @@ class DataStore(RecordsMixin, PredictionsMixin, BetsMixin):
             except Exception as e:
                 logger.error(f"Failed to connect to Redis: {e}")
 
+        try:
+            from src.database.db_migration import seed_default_data, migrate_from_json
+            seed_default_data()
+            migrate_from_json()
+        except Exception as ex:
+            logger.warning(f"DB Seeding skipped or deferred: {ex}")
+
         if not self.use_redis:
             self._load_local_store()
 
@@ -123,7 +131,11 @@ class DataStore(RecordsMixin, PredictionsMixin, BetsMixin):
                     self._demo_balance = data.get("demo_balance", 10000000.0)
                     self._peak_demo_balance = data.get("peak_demo_balance", self._demo_balance)
                     self._demo_bet_amount = data.get("demo_bet_amount", 100000.0)
-                    self._demo_bet_strategy = data.get("demo_bet_strategy", "fixed")
+                    strat = data.get("demo_bet_strategy", "dkm_adaptive_pro")
+                    from src.core.money import ALL_STRATEGIES
+                    if strat not in ALL_STRATEGIES:
+                        strat = "dkm_adaptive_pro"
+                    self._demo_bet_strategy = strat
                     self._parity_loss_streak = data.get("parity_loss_streak", 0)
                     self._size_loss_streak = data.get("size_loss_streak", 0)
                     self._demo_bets = data.get("demo_bets", {})

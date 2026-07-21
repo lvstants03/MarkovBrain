@@ -38,15 +38,17 @@ class RecordsMixin:
                     "is_le": is_le,
                     "time": time.strftime("%H:%M:%S %d/%m/%Y")
                 }
-                self.redis_client.hset(self.key_records, issue, json.dumps(record))
-                self.redis_client.lpush(self.key_history_issues, issue)
-                list_len = self.redis_client.llen(self.key_history_issues)
-                if list_len > self.max_size:
-                    removed_issue = self.redis_client.rpop(self.key_history_issues)
-                    if removed_issue:
-                        self.redis_client.hdel(self.key_records, removed_issue)
-                self.resolve_prediction(issue, numbers)
-                return True
+                is_new = self.redis_client.hsetnx(self.key_records, issue, json.dumps(record))
+                if is_new:
+                    self.redis_client.lpush(self.key_history_issues, issue)
+                    list_len = self.redis_client.llen(self.key_history_issues)
+                    if list_len > self.max_size:
+                        removed_issue = self.redis_client.rpop(self.key_history_issues)
+                        if removed_issue:
+                            self.redis_client.hdel(self.key_records, removed_issue)
+                    self.resolve_prediction(issue, numbers)
+                    return True
+                return False
             except Exception as e:
                 logger.error(f"Redis error in add_record: {e}")
 

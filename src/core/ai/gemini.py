@@ -7,9 +7,8 @@ from src.config import config
 
 logger = logging.getLogger(__name__)
 
-
 class GeminiClient:
-    """Xu ly tat ca logic goi Gemini API: cache, rate-limit, retry."""
+    """Xử lý tất cả logic gọi Gemini API: cache, rate-limit, retry."""
     _gemini_cache = {}
     _last_call_time = 0
     _consecutive_failures = 0

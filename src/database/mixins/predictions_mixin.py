@@ -328,75 +328,76 @@ class PredictionsMixin:
         return win_rate_pct >= 45.0
 
     def write_market_health_log(self) -> None:
-        history = self.get_prediction_history(limit=1000)
-        resolved_items = []
-        for item in history:
-            sp = item.get("status_parity")
-            ss = item.get("status_size")
-            if sp in ("win", "lose") or ss in ("win", "lose"):
-                resolved_items.append(item)
-            if len(resolved_items) >= 30:
-                break
+        with self._lock:
+            history = self.get_prediction_history(limit=1000)
+            resolved_items = []
+            for item in history:
+                sp = item.get("status_parity")
+                ss = item.get("status_size")
+                if sp in ("win", "lose") or ss in ("win", "lose"):
+                    resolved_items.append(item)
+                if len(resolved_items) >= 30:
+                    break
 
-        log_file_path = os.path.join(os.getcwd(), "market_health_30.log")
-        if len(resolved_items) < 30:
+            log_file_path = os.path.join(os.getcwd(), "market_health_30.log")
+            if len(resolved_items) < 30:
+                header = (
+                    "Khối 30 kỳ gần nhất: -\n"
+                    "Hiệu suất thắng: -\n"
+                    "Phạm Vi Kỳ\tThời Gian\tSố Lượt Cược\tTỷ Lệ Thắng\tTrạng Thái\n"
+                )
+                content = header + "Chưa có đủ 30 kỳ để phân tích.\n"
+                with open(log_file_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                return
+
+            end_issue = resolved_items[0]["issue"]
+            start_issue = resolved_items[-1]["issue"]
+            issue_range = f"{start_issue}-{end_issue}"
+
+            total_bets = 0
+            wins = 0
+            for item in resolved_items:
+                sp = item.get("status_parity")
+                ss = item.get("status_size")
+                if sp in ("win", "lose"):
+                    total_bets += 1
+                    if sp == "win":
+                        wins += 1
+                if ss in ("win", "lose"):
+                    total_bets += 1
+                    if ss == "win":
+                        wins += 1
+
+            win_rate_pct = (wins / total_bets * 100) if total_bets > 0 else 0.0
+            status = "Ổn định" if win_rate_pct >= 53.0 else "Hỗn loạn"
+
+            existing_rows = []
+            if os.path.exists(log_file_path):
+                try:
+                    with open(log_file_path, "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+                    for line in lines:
+                        parts = line.strip().split("\t")
+                        if len(parts) >= 5 and parts[0] != "Phạm Vi Kỳ":
+                            existing_rows.append(line.strip())
+                except Exception:
+                    pass
+
+            current_time_str = time.strftime("%H:%M:%S %d/%m/%Y")
+            new_row = f"{issue_range}\t{current_time_str}\t{total_bets}\t{win_rate_pct:.1f}%\t{status}"
+
+            if not any(row.startswith(issue_range) for row in existing_rows):
+                existing_rows.append(new_row)
+
             header = (
-                "Khối 30 kỳ gần nhất: -\n"
-                "Hiệu suất thắng: -\n"
+                f"Khối 30 kỳ gần nhất: {start_issue} - {end_issue}\n"
+                f"Hiệu suất thắng: {wins}/{total_bets} ({win_rate_pct:.1f}%)\n"
                 "Phạm Vi Kỳ\tThời Gian\tSố Lượt Cược\tTỷ Lệ Thắng\tTrạng Thái\n"
             )
-            content = header + "Chưa có đủ 30 kỳ để phân tích.\n"
+            table_content = "\n".join(existing_rows[-100:]) + "\n"
             with open(log_file_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            return
-
-        end_issue = resolved_items[0]["issue"]
-        start_issue = resolved_items[-1]["issue"]
-        issue_range = f"{start_issue}-{end_issue}"
-
-        total_bets = 0
-        wins = 0
-        for item in resolved_items:
-            sp = item.get("status_parity")
-            ss = item.get("status_size")
-            if sp in ("win", "lose"):
-                total_bets += 1
-                if sp == "win":
-                    wins += 1
-            if ss in ("win", "lose"):
-                total_bets += 1
-                if ss == "win":
-                    wins += 1
-
-        win_rate_pct = (wins / total_bets * 100) if total_bets > 0 else 0.0
-        status = "Ổn định" if win_rate_pct >= 53.0 else "Hỗn loạn"
-
-        existing_rows = []
-        if os.path.exists(log_file_path):
-            try:
-                with open(log_file_path, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-                for line in lines:
-                    parts = line.strip().split("\t")
-                    if len(parts) >= 5 and parts[0] != "Phạm Vi Kỳ":
-                        existing_rows.append(line.strip())
-            except Exception:
-                pass
-
-        current_time_str = time.strftime("%H:%M:%S %d/%m/%Y")
-        new_row = f"{issue_range}\t{current_time_str}\t{total_bets}\t{win_rate_pct:.1f}%\t{status}"
-
-        if not any(row.startswith(issue_range) for row in existing_rows):
-            existing_rows.append(new_row)
-
-        header = (
-            f"Khối 30 kỳ gần nhất: {start_issue} - {end_issue}\n"
-            f"Hiệu suất thắng: {wins}/{total_bets} ({win_rate_pct:.1f}%)\n"
-            "Phạm Vi Kỳ\tThời Gian\tSố Lượt Cược\tTỷ Lệ Thắng\tTrạng Thái\n"
-        )
-        table_content = "\n".join(existing_rows[-100:]) + "\n"
-        with open(log_file_path, "w", encoding="utf-8") as f:
-            f.write(header + table_content)
+                f.write(header + table_content)
 
     # ============================ SOCKET LOGS ============================
 

@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Any
 from src.database.store import store
-from src.core.analyzer_helpers import (
+from src.core.analyzer.helpers import (
     ema, is_ar_confirmed, get_percentile, get_dynamic_confirmation
 )
 
@@ -22,10 +22,11 @@ class ParityAnalyzer:
         engine_used_parity = "Heuristics"
 
         recent_history_parity = history[:N_parity]
+        actual_n_par = len(recent_history_parity)
         recent_le_count_par = sum(1 for r in recent_history_parity if r.get("is_le"))
-        recent_chan_count = N_parity - recent_le_count_par
-        prob_le_sliding_par = recent_le_count_par / N_parity if N_parity > 0 else 0.5
-        prob_chan_sliding_par = recent_chan_count / N_parity if N_parity > 0 else 0.5
+        recent_chan_count = actual_n_par - recent_le_count_par
+        prob_le_sliding_par = recent_le_count_par / actual_n_par if actual_n_par > 0 else 0.5
+        prob_chan_sliding_par = recent_chan_count / actual_n_par if actual_n_par > 0 else 0.5
 
         sliding_pred = "None"
         markov_pred = "None"
@@ -70,8 +71,17 @@ class ParityAnalyzer:
             parity_decision = "MUA LẺ" if predicted_is_le else "MUA CHẴN"
             parity_confidence = min(base_confidence, 70)
         else:
+            reversal_th = cfg_p.get("reversal_threshold", 0.85)
             min_prob = cfg_p.get("min_probability_threshold", 0.60)
-            if prob_le_sliding_par >= buy_threshold_parity and ar_smooth_parity < ar_threshold_parity and prob_le_sliding_par >= min_prob:
+            if prob_le_sliding_par >= reversal_th:
+                parity_decision = "MUA CHẴN"
+                parity_confidence = 65
+                parity_rationale = f"Đảo chiều: Xác suất Lẻ cực đoan {prob_le_sliding_par*100:.1f}% ≥{reversal_th*100:.0f}%."
+            elif prob_chan_sliding_par >= reversal_th:
+                parity_decision = "MUA LẺ"
+                parity_confidence = 65
+                parity_rationale = f"Đảo chiều: Xác suất Chẵn cực đoan {prob_chan_sliding_par*100:.1f}% ≥{reversal_th*100:.0f}%."
+            elif prob_le_sliding_par >= buy_threshold_parity and ar_smooth_parity < ar_threshold_parity and prob_le_sliding_par >= min_prob:
                 parity_decision = "MUA LẺ"
                 parity_confidence = int(prob_le_sliding_par * 100)
                 parity_rationale = f"Xác suất Lẻ {prob_le_sliding_par*100:.1f}% ≥{buy_threshold_parity*100:.1f}%, AR trung bình, ưu tiên cao."
@@ -133,9 +143,14 @@ class ParityAnalyzer:
             stats_recent = store.get_prediction_stats_recent(limit=cfg_p["win_rate_filter_window"])
             parity_wr = stats_recent.get("parity", {}).get("win_rate", 0.5)
             if stats_recent.get("parity", {}).get("total", 0) >= cfg_p["win_rate_filter_min_total"] and parity_wr < cfg_p["win_rate_filter_threshold"] and parity_decision != "BỎ QUA":
-                parity_decision = "BỎ QUA"
-                parity_confidence = 50
-                parity_rationale = f"Bỏ qua Parity do win rate {cfg_p['win_rate_filter_window']} kỳ {parity_wr*100:.1f}% < {cfg_p['win_rate_filter_threshold']*100:.0f}%."
+                recent_preds = store.get_prediction_history(limit=3)
+                consecutive_ignored = sum(1 for p in recent_preds if p.get("status_parity") == "ignored")
+                if consecutive_ignored < 3:
+                    parity_decision = "BỎ QUA"
+                    parity_confidence = 50
+                    parity_rationale = f"Bỏ qua Parity do win rate {cfg_p['win_rate_filter_window']} kỳ {parity_wr*100:.1f}% < {cfg_p['win_rate_filter_threshold']*100:.0f}%."
+                else:
+                    logger.info(f"[Parity] Đã bỏ qua {consecutive_ignored} kỳ liên tiếp do win_rate thấp, cho phép thử lại để phục hồi.")
         except Exception as e:
             logger.debug(f"Could not fetch parity win rate: {e}")
 

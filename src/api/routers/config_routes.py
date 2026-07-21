@@ -180,3 +180,163 @@ async def get_socket_history(limit: int = Query(default=100, ge=1, le=500)):
     }
 
 
+class SavePresetRequest(BaseModel):
+    preset_name: str = Field(default="standard", description="Ten cua bo tham so")
+    parity_config: dict = Field(..., description="Bo tham so cho Keo Parity")
+    size_config: dict = Field(..., description="Bo tham so cho Keo Size")
+
+@router.get("/config")
+async def get_config():
+    """Lay cau hinh hien tai cua Bot (uu tien DB, day du 32 tham so)"""
+    p_cfg = store.get_analyzer_config("parity")
+    s_cfg = store.get_analyzer_config("size")
+
+    return {
+        "status": "success",
+        "parity_config": p_cfg,
+        "size_config": s_cfg
+    }
+
+@router.post("/config/save-preset")
+async def save_preset_config(payload: SavePresetRequest):
+    # Luu vinh vien vao CSDL Database (analyzer_configs) — day du 32 truong
+    _ALL_FIELDS = [
+        "n_sliding_min", "n_sliding_max", "n_sliding_ratio",
+        "ar_window_min", "ar_window_max", "ar_window_ratio",
+        "ar_threshold_multiplier", "ar_threshold_min", "ar_threshold_max",
+        "n_recent_min", "n_recent_max", "n_recent_ratio",
+        "streak_confidence_threshold", "streak_min_samples",
+        "streak_safety_trap_multiplier", "streak_safety_trap_min",
+        "saturation_percentile", "saturation_limit_min", "saturation_limit_max",
+        "cooling_off_loss_limit", "win_streak_pause_limit",
+        "buy_threshold_multiplier", "buy_threshold_min", "buy_threshold_max",
+        "min_probability_threshold", "ma50_window", "ma50_filter_active",
+        "win_rate_filter_window", "win_rate_filter_min_total", "win_rate_filter_threshold",
+        "reversal_threshold", "volatility_penalty",
+    ]
+    try:
+        from src.database.connection import get_db_session
+        from src.database.models import AnalyzerConfig
+        preset = payload.preset_name if hasattr(payload, "preset_name") and payload.preset_name else "default"
+        with get_db_session() as session:
+            for market, cfg_dict in [("parity", payload.parity_config), ("size", payload.size_config)]:
+                cfg = session.query(AnalyzerConfig).filter_by(
+                    lottery_code=config.LOTTERY_CODE,
+                    market_type=market,
+                    preset_name=preset
+                ).first()
+
+                if not cfg:
+                    cfg = AnalyzerConfig(
+                        lottery_code=config.LOTTERY_CODE,
+                        market_type=market,
+                        preset_name=preset
+                    )
+                    session.add(cfg)
+
+                for field in _ALL_FIELDS:
+                    if field in cfg_dict:
+                        setattr(cfg, field, cfg_dict[field])
+
+                cfg.is_active = True
+            session.commit()
+        # Xoa cache de engine doc lai tham so moi ngay lap tuc
+        store.invalidate_analyzer_config_cache()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Loi luu preset: {e}")
+
+    return {
+        "status": "success",
+        "message": f"Da cap nhat vinh vien bo tham so preset='{preset}' vao Database!",
+        "parity_config": payload.parity_config,
+        "size_config": payload.size_config
+    }
+
+
+@router.get("/config/presets")
+async def list_config_presets():
+    """Lay danh sach tat ca cac presets da luu trong Database"""
+    presets = []
+    try:
+        from src.database.connection import get_db_session
+        from src.database.models import AnalyzerConfig
+        with get_db_session() as session:
+            rows = session.query(AnalyzerConfig.preset_name, AnalyzerConfig.is_active).filter_by(
+                lottery_code=config.LOTTERY_CODE
+            ).distinct().all()
+            
+            seen = set()
+            for r in rows:
+                p_name = r.preset_name or "standard"
+                if p_name not in seen:
+                    seen.add(p_name)
+                    presets.append({
+                        "name": p_name,
+                        "is_active": r.is_active
+                    })
+    except Exception:
+        pass
+
+    if not presets:
+        presets = [{"name": "standard", "is_active": True}]
+
+    return {
+        "status": "success",
+        "presets": presets
+    }
+
+
+@router.post("/config/presets/{preset_name}/activate")
+async def activate_config_preset(preset_name: str):
+    """Kich hoat mot preset lam cau hinh chinh cho Bot"""
+    try:
+        from src.database.connection import get_db_session
+        from src.database.models import AnalyzerConfig
+        with get_db_session() as session:
+            # Shift all to inactive
+            session.query(AnalyzerConfig).filter_by(
+                lottery_code=config.LOTTERY_CODE
+            ).update({"is_active": False})
+
+            # Set target active
+            session.query(AnalyzerConfig).filter_by(
+                lottery_code=config.LOTTERY_CODE,
+                preset_name=preset_name
+            ).update({"is_active": True})
+            session.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Loi active preset: {e}")
+
+    store.invalidate_analyzer_config_cache()
+    return {
+        "status": "success",
+        "message": f"Da kich hoat bo tham so '{preset_name}' lam mac dinh trong CSDL!"
+    }
+
+
+@router.delete("/config/presets/{preset_name}")
+async def delete_config_preset(preset_name: str):
+    """Xoa bo mot preset cu ra khoi CSDL Database"""
+    if preset_name == "standard":
+        raise HTTPException(status_code=400, detail="Khong the xoa bo tham so 'standard' mac dinh!")
+
+    deleted = 0
+    try:
+        from src.database.connection import get_db_session
+        from src.database.models import AnalyzerConfig
+        with get_db_session() as session:
+            deleted = session.query(AnalyzerConfig).filter_by(
+                lottery_code=config.LOTTERY_CODE,
+                preset_name=preset_name
+            ).delete()
+            session.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Loi xoa preset: {e}")
+
+    store.invalidate_analyzer_config_cache()
+    return {
+        "status": "success",
+        "message": f"Da xoa thanh cong bo tham so '{preset_name}' khoi CSDL ({deleted} ban ghi)!"
+    }
+
+

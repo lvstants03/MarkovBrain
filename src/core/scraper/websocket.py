@@ -23,7 +23,6 @@ class WebSocketScraper:
         self.last_received_time = time.time()
         self.connection_status = "disconnected"
 
-        # ===== THÊM MỚI =====
         self._reconnect_attempts = 0
         self._max_reconnect_attempts = 3
 
@@ -304,7 +303,6 @@ class WebSocketScraper:
                     connect_kwargs["extra_headers"] = fallback_headers
 
                 async with websockets.connect(self.ws_url, **connect_kwargs) as ws:
-                    # ===== RESET BIẾN ĐẾM KHI KẾT NỐI THÀNH CÔNG =====
                     self._reconnect_attempts = 0
                     logger.info("WebSocket connected successfully")
                     clean_url = self.ws_url.split('/ws/')[0] if '/ws/' in self.ws_url else self.ws_url
@@ -337,13 +335,10 @@ class WebSocketScraper:
                 logger.error(f"WebSocket connection error or disconnected: {err_msg}")
                 store.log_connection_event("disconnected", f"Mất kết nối hoặc lỗi: {err_msg}")
 
-                # ===== TĂNG BIẾN ĐẾM VÀ GỬI RELOAD NẾU VƯỢT NGƯỠNG =====
                 self._reconnect_attempts += 1
                 if self._reconnect_attempts > self._max_reconnect_attempts:
                     logger.warning(f"Reconnect failed {self._reconnect_attempts} times. Sending reload command to browser.")
                     store.set_script_command("reload")
-                    # Reset biến đếm sau khi gửi reload để tránh gửi liên tục nếu vẫn fail,
-                    # nhưng nếu vẫn fail, lần tiếp theo sẽ lại tăng và gửi reload.
                     self._reconnect_attempts = 0
                 else:
                     logger.info(f"Reconnect attempt {self._reconnect_attempts} failed, will retry.")

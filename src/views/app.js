@@ -1,3 +1,126 @@
+// ==========================================================================
+// UI NOTIFICATION & CUSTOM CONFIRMATION SYSTEM
+// ==========================================================================
+
+function getOrCreateToastContainer() {
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toastContainer';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    return container;
+}
+
+function getOrCreateConfirmModal() {
+    let modal = document.getElementById('customConfirmModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'customConfirmModal';
+        modal.className = 'modal-overlay';
+        modal.style.display = 'none';
+        modal.innerHTML = `
+            <div class="modal-content confirm-modal-box">
+                <div class="modal-header">
+                    <h3 id="confirmModalTitle" class="confirm-modal-title">Xác Nhận Hành Động</h3>
+                </div>
+                <div class="modal-body">
+                    <p id="confirmModalMessage" class="confirm-modal-message">Bạn có chắc chắn muốn thực hiện hành động này?</p>
+                </div>
+                <div class="confirm-modal-footer">
+                    <button id="confirmModalCancelBtn" class="btn btn-secondary">Hủy Bỏ</button>
+                    <button id="confirmModalOkBtn" class="btn btn-danger">Xác Nhận</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    return modal;
+}
+
+function showToast(title, message, type = 'info', duration = 4000) {
+    const container = getOrCreateToastContainer();
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+
+    toast.innerHTML = `
+        <div class="toast-header">
+            <div class="toast-title">${title}</div>
+            <button class="toast-close" onclick="this.parentElement.parentElement.remove()">&times;</button>
+        </div>
+        <div class="toast-body">${message}</div>
+        <div class="toast-progress" style="animation-duration: ${duration}ms;"></div>
+    `;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add('toast-hiding');
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
+function showConfirmModal(title, message) {
+    return new Promise((resolve) => {
+        const modal = getOrCreateConfirmModal();
+        const titleEl = document.getElementById('confirmModalTitle');
+        const msgEl = document.getElementById('confirmModalMessage');
+        const okBtn = document.getElementById('confirmModalOkBtn');
+        const cancelBtn = document.getElementById('confirmModalCancelBtn');
+
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        modal.style.display = 'flex';
+
+        const cleanup = () => {
+            modal.style.display = 'none';
+            okBtn.onclick = null;
+            cancelBtn.onclick = null;
+        };
+
+        okBtn.onclick = () => {
+            cleanup();
+            resolve(true);
+        };
+
+        cancelBtn.onclick = () => {
+            cleanup();
+            resolve(false);
+        };
+    });
+}
+
+function notifyPrediction(predData) {
+    if (!predData) return;
+    const issue = predData.issue || 'Mới';
+    const parity = predData.parity || predData.predicted_parity || 'Không có';
+    const size = predData.size || predData.predicted_size || 'Không có';
+    const confP = predData.parity_confidence ? `${predData.parity_confidence}%` : '';
+    const confS = predData.size_confidence ? `${predData.size_confidence}%` : '';
+
+    let content = `<strong>Kỳ Quay:</strong> #${issue}<br>`;
+    if (parity !== 'Không có' && parity !== 'BỎ QUA') {
+        content += `• Chẵn/Lẻ: <strong>${parity}</strong> ${confP}<br>`;
+    }
+    if (size !== 'Không có' && size !== 'BỎ QUA') {
+        content += `• Tài/Xỉu: <strong>${size}</strong> ${confS}<br>`;
+    }
+
+    showToast(`Tín Hiệu Dự Đoán #${issue}`, content, 'prediction', 6000);
+}
+
+function notifyBetPlacement(betData) {
+    if (!betData) return;
+    const issue = betData.issue || '';
+    const market = betData.market || '';
+    const choice = betData.choice || '';
+    const amount = betData.amount ? `${Number(betData.amount).toLocaleString('vi-VN')} VNĐ` : '';
+
+    const content = `<strong>Kỳ Quay:</strong> #${issue}<br>• Hạng mục: ${market}<br>• Lựa chọn: <strong>${choice}</strong><br>• Tiền cược: <strong>${amount}</strong>`;
+    showToast(`Đặt Cược Thành Công #${issue}`, content, 'bet', 6000);
+}
+
 // Tab Navigation Logic
 function switchTab(tabId) {
     document.querySelectorAll('.tab-panel').forEach(panel => {
@@ -51,21 +174,21 @@ function copyConsoleCode() {
     const code = document.getElementById('consoleCode');
     code.select();
     document.execCommand('copy');
-    alert('Đã copy mã Console vào clipboard!');
+    showToast('Thành Công', 'Đã copy mã Console vào clipboard!', 'success');
 }
 
 function copyBookmarkletCode() {
     const code = document.getElementById('bookmarkletCode');
     code.select();
     document.execCommand('copy');
-    alert('Đã copy mã Bookmarklet vào clipboard!');
+    showToast('Thành Công', 'Đã copy mã Bookmarklet vào clipboard!', 'success');
 }
 
 function copyTampermonkeyCode() {
     const code = document.getElementById('tampermonkeyCode');
     code.select();
     document.execCommand('copy');
-    alert('Đã copy mã Tampermonkey Script vào clipboard!');
+    showToast('Thành Công', 'Đã copy mã Tampermonkey Script vào clipboard!', 'success');
 }
 
 let demoBetsCurrentPage = 1;
@@ -680,7 +803,7 @@ async function updateToken() {
     const cookie = document.getElementById('cookieInput').value.trim();
     
     if (!token) {
-        alert("Vui lòng dán token hợp lệ.");
+        showToast('Cảnh Báo', 'Vui lòng dán token hợp lệ.', 'warning');
         return;
     }
     try {
@@ -695,16 +818,16 @@ async function updateToken() {
         });
         const res = await response.json();
         if (res.status === 'success') {
-            alert("Cập nhật Token và cấu hình HTTP Auth thành công!");
+            showToast('Thành Công', 'Cập nhật Token và cấu hình HTTP Auth thành công!', 'success');
             document.getElementById('tokenInput').value = '';
             document.getElementById('cfAuthTokenInput').value = '';
             document.getElementById('cookieInput').value = '';
             fetchRealtimeData();
         } else {
-            alert("Lỗi: " + res.message);
+            showToast('Lỗi', 'Lỗi: ' + res.message, 'error');
         }
     } catch (e) {
-        alert("Không thể kết nối đến API: " + e);
+        showToast('Lỗi Kết Nối', 'Không thể kết nối đến API: ' + e, 'error');
     }
 }
 
@@ -712,10 +835,10 @@ async function triggerReconnect() {
     try {
         const response = await fetch('/api/reconnect', {method: 'POST'});
         const res = await response.json();
-        alert(res.message);
+        showToast('Thông Báo', res.message, 'info');
         fetchRealtimeData();
     } catch (e) {
-        alert("Lỗi kết nối lại: " + e);
+        showToast('Lỗi Kết Nối', 'Lỗi kết nối lại: ' + e, 'error');
     }
 }
 
@@ -730,42 +853,42 @@ async function changeGame() {
         });
         const res = await response.json();
         if (res.status === 'success') {
-            alert(`Đã chuyển đổi thành công sang game mới! Hệ thống đang tải lại dữ liệu...`);
+            showToast('Thành Công', 'Đã chuyển đổi thành công sang game mới! Hệ thống đang tải lại dữ liệu...', 'success');
             fetchRealtimeData();
         } else {
-            alert("Lỗi: " + res.message);
+            showToast('Lỗi', 'Lỗi: ' + res.message, 'error');
         }
     } catch (e) {
-        alert("Lỗi kết nối API: " + e);
+        showToast('Lỗi API', 'Lỗi kết nối API: ' + e, 'error');
     }
 }
 
 async function resetDemoBalance() {
-    if (confirm("Bạn có chắc chắn muốn reset số dư giả lập về 10,000,000 VND và xóa toàn bộ lịch sử cược ảo không?")) {
+    if (await showConfirmModal('Reset Số Dư', 'Bạn có chắc chắn muốn reset số dư giả lập về 10,000,000 VND và xóa toàn bộ lịch sử cược ảo không?')) {
         try {
             const response = await fetch('/api/balance/reset', { method: 'POST' });
             const res = await response.json();
             if (res.status === 'success') {
-                alert(res.message);
+                showToast('Thành Công', res.message, 'success');
                 fetchRealtimeData();
             }
         } catch(e) {
-            alert("Lỗi khi reset số dư: " + e);
+            showToast('Lỗi', 'Lỗi khi reset số dư: ' + e, 'error');
         }
     }
 }
 
 async function clearDemoBets() {
-    if (confirm("Bạn có chắc chắn muốn XÓA TOÀN BỘ hệ thống (kỳ quay, lịch sử dự đoán, nhật ký cược) và tải lại dữ liệu mới nhất không? (Số dư giả lập hiện tại sẽ được GIỮ NGUYÊN)")) {
+    if (await showConfirmModal('Reset Hệ Thống', 'Bạn có chắc chắn muốn XÓA TOÀN BỘ hệ thống (kỳ quay, lịch sử dự đoán, nhật ký cược) và tải lại dữ liệu mới nhất không? (Số dư giả lập hiện tại sẽ được GIỮ NGUYÊN)')) {
         try {
             const response = await fetch('/api/balance/clear-bets', { method: 'POST' });
             const res = await response.json();
             if (res.status === 'success') {
-                alert(res.message);
+                showToast('Thành Công', res.message, 'success');
                 fetchRealtimeData();
             }
         } catch(e) {
-            alert("Lỗi khi xóa nhật ký cược: " + e);
+            showToast('Lỗi', 'Lỗi khi xóa nhật ký cược: ' + e, 'error');
         }
     }
 }
@@ -849,7 +972,7 @@ async function updateDemoBetAmount() {
     const strategy = document.getElementById('betStrategySelect').value;
 
     if (isNaN(amount) || amount <= 0) {
-        alert("Vui long nhap muc cuoc hop le!");
+        showToast('Cảnh Báo', 'Vui lòng nhập mức cược hợp lệ!', 'warning');
         return;
     }
     try {
@@ -864,12 +987,13 @@ async function updateDemoBetAmount() {
         const res = await response.json();
         if (res.status === 'success') {
             input.value = amount.toLocaleString('vi-VN');
+            showToast('Thành Công', 'Đã cập nhật mức cược!', 'success');
             fetchRealtimeData();
         } else {
-            alert(res.message);
+            showToast('Lỗi', res.message, 'error');
         }
     } catch(e) {
-        alert("Loi khi cap nhat muc cuoc: " + e);
+        showToast('Lỗi', 'Lỗi khi cập nhật mức cược: ' + e, 'error');
     }
 }
 
@@ -878,7 +1002,7 @@ async function setManualDemoBalance() {
     const cleanVal = input.value.replace(/[\.,]/g, '');
     const balance = parseFloat(cleanVal);
     if (isNaN(balance) || balance < 0) {
-        alert("Vui long nhap so du gia lap hop le!");
+        showToast('Cảnh Báo', 'Vui lòng nhập số dư giả lập hợp lệ!', 'warning');
         return;
     }
     try {
@@ -890,6 +1014,7 @@ async function setManualDemoBalance() {
         const res = await response.json();
         if (res.status === 'success') {
             input.value = '';
+            showToast('Thành Công', 'Đã cập nhật số dư giả lập!', 'success');
             fetchRealtimeData();
             if (res.recommended_bet) {
                 const panel = document.getElementById('smartBetRecommendPanel');
@@ -928,10 +1053,10 @@ async function setManualDemoBalance() {
                 }
             }
         } else {
-            alert(res.message);
+            showToast('Lỗi', res.message, 'error');
         }
     } catch (e) {
-        alert("Loi khi cap nhat so du gia lap: " + e);
+        showToast('Lỗi', 'Lỗi khi cập nhật số dư giả lập: ' + e, 'error');
     }
 }
 
@@ -997,9 +1122,9 @@ async function triggerGameReload() {
     try {
         const response = await fetch('/api/script/reload', { method: 'POST' });
         const res = await response.json();
-        alert(res.message);
+        showToast('Thông Báo', res.message, 'info');
     } catch (e) {
-        alert("Lỗi gửi yêu cầu tải lại trang game: " + e);
+        showToast('Lỗi', 'Lỗi gửi yêu cầu tải lại trang game: ' + e, 'error');
     }
 }
 
@@ -1302,4 +1427,210 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    fetchAndRenderSidebarConfig();
+});
+
+async function fetchAndRenderSidebarConfig() {
+    try {
+        const res = await fetch('/api/config');
+        if (res.ok) {
+            const data = await res.json();
+            const parityCfg = data.parity_config || {};
+            const sizeCfg = data.size_config || {};
+
+            const buyMin = parityCfg.buy_threshold_min !== undefined ? parityCfg.buy_threshold_min : 0.55;
+            const revTh = parityCfg.reversal_threshold !== undefined ? parityCfg.reversal_threshold : 0.85;
+            const arMin = parityCfg.ar_window_min || 10;
+            const arMax = parityCfg.ar_window_max || 30;
+            const arThMin = parityCfg.ar_threshold_min || 0.70;
+            const arThMax = parityCfg.ar_threshold_max || 0.88;
+            const cooling = parityCfg.cooling_off_loss_limit || 2;
+            const winPause = parityCfg.win_streak_pause_limit || 2;
+
+            if (document.getElementById('sbBuyTh')) {
+                document.getElementById('sbBuyTh').innerText = `${buyMin} (${(buyMin * 100).toFixed(0)}%)`;
+            }
+            if (document.getElementById('sbRevTh')) {
+                document.getElementById('sbRevTh').innerText = `${revTh} (${(revTh * 100).toFixed(0)}%)`;
+            }
+            if (document.getElementById('sbArWin')) {
+                document.getElementById('sbArWin').innerText = `${arMin} - ${arMax} kỳ`;
+            }
+            if (document.getElementById('sbArTh')) {
+                document.getElementById('sbArTh').innerText = `${arThMin} - ${arThMax}`;
+            }
+            if (document.getElementById('sbCooling')) {
+                document.getElementById('sbCooling').innerText = `${cooling} kỳ thua`;
+            }
+            if (document.getElementById('sbWinPause')) {
+                document.getElementById('sbWinPause').innerText = `${winPause} kỳ thắng`;
+            }
+
+            // Bind values into Config Form inputs & JSON textareas if on configTab
+            if (document.getElementById('cfg_p_buy_min')) document.getElementById('cfg_p_buy_min').value = buyMin;
+            if (document.getElementById('cfg_p_rev')) document.getElementById('cfg_p_rev').value = revTh;
+            if (document.getElementById('cfg_p_n_min')) document.getElementById('cfg_p_n_min').value = parityCfg.n_sliding_min || 12;
+            if (document.getElementById('cfg_p_n_max')) document.getElementById('cfg_p_n_max').value = parityCfg.n_sliding_max || 20;
+            if (document.getElementById('cfg_p_ar_min')) document.getElementById('cfg_p_ar_min').value = arMin;
+            if (document.getElementById('cfg_p_ar_max')) document.getElementById('cfg_p_ar_max').value = arMax;
+            if (document.getElementById('cfg_p_arth_min')) document.getElementById('cfg_p_arth_min').value = arThMin;
+            if (document.getElementById('cfg_p_arth_max')) document.getElementById('cfg_p_arth_max').value = arThMax;
+            if (document.getElementById('cfg_p_cooling')) document.getElementById('cfg_p_cooling').value = cooling;
+            if (document.getElementById('cfg_p_winpause')) document.getElementById('cfg_p_winpause').value = winPause;
+
+            if (document.getElementById('cfg_s_buy_min')) document.getElementById('cfg_s_buy_min').value = sizeCfg.buy_threshold_min !== undefined ? sizeCfg.buy_threshold_min : 0.55;
+            if (document.getElementById('cfg_s_rev')) document.getElementById('cfg_s_rev').value = sizeCfg.reversal_threshold || 0.85;
+
+            if (document.getElementById('jsonParityText')) {
+                document.getElementById('jsonParityText').value = JSON.stringify(parityCfg, null, 2);
+            }
+            if (document.getElementById('jsonSizeText')) {
+                document.getElementById('jsonSizeText').value = JSON.stringify(sizeCfg, null, 2);
+            }
+        }
+    } catch (e) {
+        console.warn('Could not load sidebar config:', e);
+    }
+}
+
+async function saveConfigPresetToDb() {
+    let parityCfg = {};
+    let sizeCfg = {};
+
+    try {
+        if (document.getElementById('jsonParityText') && document.getElementById('jsonParityText').value.trim() !== '') {
+            parityCfg = JSON.parse(document.getElementById('jsonParityText').value);
+        }
+        if (document.getElementById('jsonSizeText') && document.getElementById('jsonSizeText').value.trim() !== '') {
+            sizeCfg = JSON.parse(document.getElementById('jsonSizeText').value);
+        }
+    } catch (err) {
+        showToast('Lỗi JSON', 'Lỗi định dạng JSON trong ô nhập mã thô! Vui lòng kiểm tra lại cú pháp JSON.', 'error');
+        return;
+    }
+
+    // Sync input values if form used
+    const pBuyMin = parseFloat(document.getElementById('cfg_p_buy_min').value);
+    if (!isNaN(pBuyMin)) {
+        parityCfg.buy_threshold_min = pBuyMin;
+        parityCfg.min_probability_threshold = pBuyMin;
+    }
+    const sBuyMin = parseFloat(document.getElementById('cfg_s_buy_min').value);
+    if (!isNaN(sBuyMin)) {
+        sizeCfg.buy_threshold_min = sBuyMin;
+        sizeCfg.min_probability_threshold = sBuyMin;
+    }
+
+    try {
+        const currentPresetName = document.getElementById('dbPresetSelect') ? document.getElementById('dbPresetSelect').value : 'standard';
+        const res = await fetch('/api/config/save-preset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                preset_name: currentPresetName,
+                parity_config: parityCfg,
+                size_config: sizeCfg
+            })
+        });
+        const result = await res.json();
+        if (res.ok && result.status === 'success') {
+            showToast('Thành Công', `Đã cập nhật vĩnh viễn bộ tham số '${currentPresetName}' vào Database thành công!`, 'success');
+            fetchAndRenderSidebarConfig();
+            loadAllPresetsFromDb();
+        } else {
+            showToast('Lỗi CSDL', 'Lỗi lưu CSDL: ' + (result.detail || result.message), 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi Kết Nối', 'Không thể kết nối API lưu CSDL: ' + e, 'error');
+    }
+}
+
+async function loadAllPresetsFromDb() {
+    try {
+        const res = await fetch('/api/config/presets');
+        if (res.ok) {
+            const data = await res.json();
+            const presets = data.presets || [];
+            const selectEl = document.getElementById('dbPresetSelect');
+            if (selectEl) {
+                selectEl.innerHTML = '';
+                presets.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.name;
+                    opt.innerText = p.name + (p.is_active ? ' (Đang chạy)' : '');
+                    if (p.is_active) opt.selected = true;
+                    selectEl.appendChild(opt);
+                });
+            }
+        }
+    } catch (e) {
+        console.warn('Could not load presets list:', e);
+    }
+}
+
+async function activateSelectedPresetDb() {
+    const selectEl = document.getElementById('dbPresetSelect');
+    if (!selectEl) return;
+    const name = selectEl.value;
+    try {
+        const res = await fetch(`/api/config/presets/${name}/activate`, { method: 'POST' });
+        const result = await res.json();
+        if (res.ok && result.status === 'success') {
+            showToast('Thành Công', result.message, 'success');
+            fetchAndRenderSidebarConfig();
+            loadAllPresetsFromDb();
+        } else {
+            showToast('Lỗi', 'Lỗi kích hoạt: ' + result.detail, 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi API', 'Lỗi kết nối API: ' + e, 'error');
+    }
+}
+
+async function promptCreateNewPreset() {
+    const name = prompt('Nhập tên Bộ Tham Số Mới muốn tạo (Ví dụ: bang_thang_7, an_toan, aggressive):');
+    if (!name || name.trim() === '') return;
+    const cleanName = name.trim().toLowerCase().replace(/\s+/g, '_');
+    
+    // Create new option in select and save
+    const selectEl = document.getElementById('dbPresetSelect');
+    if (selectEl) {
+        const opt = document.createElement('option');
+        opt.value = cleanName;
+        opt.innerText = cleanName + ' (Mới)';
+        opt.selected = true;
+        selectEl.appendChild(opt);
+    }
+    saveConfigPresetToDb();
+}
+
+async function deleteSelectedPresetDb() {
+    const selectEl = document.getElementById('dbPresetSelect');
+    if (!selectEl) return;
+    const name = selectEl.value;
+    if (name === 'standard' || name === 'default') {
+        showToast('Cảnh Báo', 'Không thể xóa bộ tham số mặc định (standard)!', 'warning');
+        return;
+    }
+    if (!await showConfirmModal('Xóa Bộ Tham Số', `Bạn có chắc chắn muốn XÓA BỘ THAM SỐ '${name}' khỏi Cơ sở dữ liệu CSDL?`)) return;
+
+    try {
+        const res = await fetch(`/api/config/presets/${name}`, { method: 'DELETE' });
+        const result = await res.json();
+        if (res.ok && result.status === 'success') {
+            showToast('Thành Công', result.message, 'success');
+            loadAllPresetsFromDb();
+            fetchAndRenderSidebarConfig();
+        } else {
+            showToast('Lỗi', 'Lỗi xóa: ' + result.detail, 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi API', 'Lỗi kết nối API xóa: ' + e, 'error');
+    }
+}
+
+// Auto load presets list on page init
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(loadAllPresetsFromDb, 1000);
 });

@@ -2,7 +2,7 @@ import json
 import time
 import logging
 from typing import List, Dict, Any, Optional
-from src.core.money_management import MoneyManager
+from src.core.money import MoneyManager, get_effective_win_rate, ALL_STRATEGIES
 from src.config import config
 
 logger = logging.getLogger(__name__)
@@ -16,12 +16,14 @@ class BetsMixin:
                 peak = self.redis_client.get(self.key_peak_demo_balance)
                 bet_amt = self.redis_client.get(self.key_demo_bet_amount)
                 strategy = self.redis_client.get(self.key_demo_bet_strategy)
-                strategy_str = "fixed"
+                strategy_str = "dkm_adaptive_pro"
                 if strategy:
                     try:
                         strategy_str = strategy.decode('utf-8')
                     except AttributeError:
                         strategy_str = str(strategy)
+                if strategy_str not in ALL_STRATEGIES:
+                    strategy_str = "dkm_adaptive_pro"
                 return {
                     "real_balance": float(real) if real else 0.0,
                     "demo_balance": float(demo) if demo else 10000000.0,
@@ -45,13 +47,16 @@ class BetsMixin:
         if self.use_redis:
             try:
                 self.redis_client.set(self.key_demo_balance, balance)
-                self.redis_client.set(self.key_peak_demo_balance, balance)
+                current_peak = float(self.redis_client.get(self.key_peak_demo_balance) or balance)
+                if balance > current_peak:
+                    self.redis_client.set(self.key_peak_demo_balance, balance)
                 return True
             except Exception as e:
                 logger.error(f"Redis error in update_demo_balance: {e}")
         with self._lock:
             self._demo_balance = balance
-            self._peak_demo_balance = balance
+            if balance > self._peak_demo_balance:
+                self._peak_demo_balance = balance
             self._save_local_store()
         return True
 
@@ -419,11 +424,21 @@ class BetsMixin:
 
         is_stable = self.is_market_stable()
         prediction_stats_recent = self.get_prediction_stats_recent(15)
-        win_rate = __import__("src.core.money_management", fromlist=["get_effective_win_rate"]).get_effective_win_rate(
+        win_rate = get_effective_win_rate(
             prediction_stats_recent, market_type
         )
 
-        is_initial_phase = (self._initial_phase_remaining > 0)
+        if self.use_redis:
+            try:
+                val = self.redis_client.get(self.key_initial_phase_remaining)
+                initial_remaining = int(val) if val is not None else 10
+            except Exception:
+                initial_remaining = self._initial_phase_remaining
+        else:
+            with self._lock:
+                initial_remaining = self._initial_phase_remaining
+
+        is_initial_phase = (initial_remaining > 0)
 
         # === CIRCUIT BREAKER: WR < 45% THÌ PAUSE 10 PHÚT ===
         if not is_stable:
@@ -442,10 +457,13 @@ class BetsMixin:
                 return "paused"
 
         # === THÊM BỘ LỌC AN TOÀN CHO SIZE ===
-        # Nếu là Size và win_rate < 50%, tự động bỏ qua để bảo vệ vốn
+        # Nếu là Size và win_rate < 50%, tự động bỏ qua tối đa 3 kỳ để bảo vệ vốn rồi thử lại
         if market_type == "size" and win_rate < 0.50:
-            logger.info(f"[place_demo_bet] Bo qua Size do win_rate 15 ky {win_rate*100:.1f}% < 50%.")
-            return "paused"
+            recent_preds = self.get_prediction_history(limit=3)
+            consecutive_ignored = sum(1 for p in recent_preds if p.get("status_size") == "ignored")
+            if consecutive_ignored < 3:
+                logger.info(f"[place_demo_bet] Bo qua Size do win_rate 15 ky {win_rate*100:.1f}% < 50%.")
+                return "paused"
 
         # Truyền is_combined và market_type vào calculate_bet
         final_amount = MoneyManager.calculate_bet(
@@ -458,7 +476,7 @@ class BetsMixin:
             win_rate=win_rate,
             is_stable=is_stable,
             is_initial_phase=is_initial_phase,
-            initial_phase_remaining=self._initial_phase_remaining,
+            initial_phase_remaining=initial_remaining,
             is_combined=is_combined,
             market_type=market_type,  
             confidence=confidence,
@@ -469,9 +487,15 @@ class BetsMixin:
             return "paused"
 
         if is_initial_phase and final_amount > 0:
-            self._initial_phase_remaining -= 1
-            self._save_local_store()
-            logger.info(f"[INITIAL PHASE] Remaining: {self._initial_phase_remaining}, bet: {final_amount}")
+            if self.use_redis:
+                try:
+                    self.redis_client.decr(self.key_initial_phase_remaining)
+                except Exception as e:
+                    logger.error(f"Redis error decrementing initial_phase_remaining: {e}")
+            with self._lock:
+                self._initial_phase_remaining = max(0, self._initial_phase_remaining - 1)
+                self._save_local_store()
+            logger.info(f"[INITIAL PHASE] Remaining decreased, bet: {final_amount}")
 
         current_balance = balances["demo_balance"]
         if final_amount > current_balance:
