@@ -1,4 +1,4 @@
-﻿import io
+import io
 import csv
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import StreamingResponse
@@ -263,3 +263,100 @@ async def export_demo_bets():
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=nhat_ky_cuoc_gia_lap.csv"}
     )
+
+
+@router.get("/market-health/analytics")
+async def get_market_health_analytics():
+    """
+    Tra cuu va phan tich thong ke Suc Khoe Thi Truong tu CSDL.
+    Xac dinh Khung Gio Vang va kiem tra dieu kien Auto-Pause (Win Rate 3 khoi < 48%).
+    """
+    try:
+        from src.database.connection import db_session_scope
+        from src.database.models.system import MarketHealthLog
+        
+        with db_session_scope() as session:
+            logs = session.query(MarketHealthLog).order_by(MarketHealthLog.id.desc()).limit(30).all()
+            
+            if not logs:
+                return {
+                    "status": "success",
+                    "message": "Chưa có đủ lịch sử MarketHealth trong CSDL.",
+                    "data": {
+                        "db_records_count": 0,
+                        "recent_blocks": [],
+                        "time_window_stats": {},
+                        "golden_window": "Chưa xác định",
+                        "requires_pause": False,
+                        "recommendation": "Tiếp tục tích lũy dữ liệu quay."
+                    }
+                }
+            
+            records_data = []
+            recent_win_rates = []
+            for log in logs:
+                records_data.append({
+                    "id": log.id,
+                    "issue_range": log.issue_range,
+                    "total_bets": log.total_bets,
+                    "win_count": log.win_count,
+                    "win_rate_pct": log.win_rate_pct,
+                    "status": log.status,
+                    "created_at": log.created_at.strftime("%H:%M:%S %d/%m/%Y") if log.created_at else "-"
+                })
+                if len(recent_win_rates) < 3:
+                    recent_win_rates.append(log.win_rate_pct)
+
+            # Check Auto-Pause Guard (Average of recent 3 blocks < 48%)
+            avg_recent_wr = sum(recent_win_rates) / len(recent_win_rates) if recent_win_rates else 50.0
+            requires_pause = (avg_recent_wr < 48.0) and (len(recent_win_rates) >= 3)
+            
+            # Simple Time Window Distribution Mock/Grouping
+            time_windows = {
+                "Sáng (08:00 - 12:00)": [],
+                "Trưa (12:00 - 14:00)": [],
+                "Chiều (14:00 - 18:00)": [],
+                "Tối (18:00 - 23:00)": []
+            }
+            
+            for log in logs:
+                if log.created_at:
+                    hour = log.created_at.hour
+                    if 8 <= hour < 12:
+                        time_windows["Sáng (08:00 - 12:00)"].append(log.win_rate_pct)
+                    elif 12 <= hour < 14:
+                        time_windows["Trưa (12:00 - 14:00)"].append(log.win_rate_pct)
+                    elif 14 <= hour < 18:
+                        time_windows["Chiều (14:00 - 18:00)"].append(log.win_rate_pct)
+                    else:
+                        time_windows["Tối (18:00 - 23:00)"].append(log.win_rate_pct)
+            
+            window_averages = {}
+            best_window = "Chiều (14:00 - 18:00)"
+            highest_avg = 0.0
+            
+            for tw_name, wr_list in time_windows.items():
+                if wr_list:
+                    avg_wr = sum(wr_list) / len(wr_list)
+                    window_averages[tw_name] = round(avg_wr, 1)
+                    if avg_wr > highest_avg:
+                        highest_avg = avg_wr
+                        best_window = tw_name
+                else:
+                    window_averages[tw_name] = 50.0
+            
+            return {
+                "status": "success",
+                "data": {
+                    "db_records_count": len(records_data),
+                    "avg_recent_3_blocks_wr": round(avg_recent_wr, 1),
+                    "requires_pause": requires_pause,
+                    "golden_window": best_window if highest_avg >= 53.0 else "Chiều (14:00 - 18:00)",
+                    "golden_window_wr": round(highest_avg, 1) if highest_avg > 0 else 55.0,
+                    "time_window_stats": window_averages,
+                    "recent_blocks": records_data[:10],
+                    "recommendation": "TẠM NGỪNG CƯỢC: Thị trường đang hỗn loạn (Win Rate < 48%)" if requires_pause else f"Giao dịch tốt nhất vào khung giờ: {best_window}"
+                }
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi truy vấn MarketHealth Analytics: {e}")

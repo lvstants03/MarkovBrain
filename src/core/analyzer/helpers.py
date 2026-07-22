@@ -1,5 +1,4 @@
 import os
-import json
 import logging
 import pandas as pd
 import numpy as np
@@ -7,48 +6,6 @@ from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-_last_configs = {}
-
-def _load_config(file_name: str, defaults: dict) -> dict:
-    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), file_name)
-    if not os.path.exists(config_path):
-        return defaults
-    try:
-        with open(config_path, "r", encoding="utf-8-sig") as f:
-            cfg = json.load(f)
-        validated = {}
-        for k, default_val in defaults.items():
-            if k not in cfg:
-                validated[k] = default_val
-                continue
-            val = cfg[k]
-            if isinstance(default_val, bool):
-                if isinstance(val, bool):
-                    validated[k] = val
-                else:
-                    validated[k] = default_val
-            elif isinstance(default_val, int):
-                if isinstance(val, (int, float)) and int(val) > 0:
-                    validated[k] = int(val)
-                else:
-                    validated[k] = default_val
-            elif isinstance(default_val, float):
-                if isinstance(val, (int, float)) and val >= 0.0:
-                    validated[k] = float(val)
-                else:
-                    validated[k] = default_val
-            else:
-                validated[k] = val
-        
-        # Chỉ in log khi cấu hình thực sự thay đổi hoặc nạp lần đầu
-        if _last_configs.get(file_name) != validated:
-            _last_configs[file_name] = validated.copy()
-            logger.info(f"Đã nạp bộ tham số mới từ {file_name}: {json.dumps(validated, ensure_ascii=False)}")
-            
-        return validated
-    except Exception as e:
-        logger.warning(f"Error loading {file_name}, using defaults: {e}")
-        return defaults
 
 def _analyze_streak_transitions(series: pd.Series) -> tuple[dict, int, Any]:
     streak_stats = {}

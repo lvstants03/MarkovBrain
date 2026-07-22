@@ -7,9 +7,8 @@ from src.config import config
 
 logger = logging.getLogger(__name__)
 
-
 class GeminiClient:
-    """Xu ly tat ca logic goi Gemini API: cache, rate-limit, retry."""
+    """Xử lý tất cả logic gọi Gemini API: cache, rate-limit, retry."""
     _gemini_cache = {}
     _last_call_time = 0
     _consecutive_failures = 0
@@ -90,22 +89,38 @@ class GeminiClient:
         headers = {"Content-Type": "application/json"}
 
         for attempt in range(max_retries):
+            t_start = time.time()
             try:
                 logger.info(f"[Gemini] Attempt {attempt+1}/{max_retries}")
                 response = requests.post(url, json=payload, headers=headers, timeout=10)
+                latency = round(time.time() - t_start, 3)
                 if response.status_code in (429, 403):
                     GeminiClient._rate_limit_until = time.time() + 300
                     logger.warning(f"[Gemini] Rate Limit / Quota Exceeded ({response.status_code}). Blocked for 5 minutes. Fallback to Local Heuristics.")
+                    GeminiClient._save_ai_audit_log(
+                        issue="unknown", prompt_payload=json.dumps(payload, ensure_ascii=False)[:2000],
+                        response_raw=f"HTTP {response.status_code}", latency=latency, is_success=False
+                    )
                     raise ValueError(f"Gemini API rate limited: {response.status_code}")
                 response.raise_for_status()
                 data = response.json()
                 text = data["candidates"][0]["content"]["parts"][0]["text"]
-                return json.loads(text)
+                result = json.loads(text)
+                GeminiClient._save_ai_audit_log(
+                    issue="unknown", prompt_payload=json.dumps(payload, ensure_ascii=False)[:2000],
+                    response_raw=text[:2000], latency=latency, is_success=True
+                )
+                return result
             except requests.exceptions.RequestException as e:
+                latency = round(time.time() - t_start, 3)
                 logger.warning(f"[Gemini] Request error: {e}")
                 if hasattr(e, 'response') and e.response is not None:
                     if e.response.status_code in (429, 403):
                         GeminiClient._rate_limit_until = time.time() + 300
+                        GeminiClient._save_ai_audit_log(
+                            issue="unknown", prompt_payload=json.dumps(payload, ensure_ascii=False)[:2000],
+                            response_raw=str(e), latency=latency, is_success=False
+                        )
                         raise ValueError(f"Gemini API rate limited: {e.response.status_code}")
                 if attempt < max_retries - 1:
                     time.sleep(1)
@@ -114,3 +129,24 @@ class GeminiClient:
                 logger.error(f"[Gemini] Parse error: {e}")
                 break
         raise Exception("Gemini API failed after retries")
+
+    @staticmethod
+    def _save_ai_audit_log(issue: str, prompt_payload: str, response_raw: str, latency: float, is_success: bool) -> None:
+        """Ghi ket qua goi Gemini API vao bang ai_audit_logs trong CSDL."""
+        try:
+            from src.database.connection import get_db_session
+            from src.database.models.prediction import AIAuditLog
+            with get_db_session() as session:
+                db_log = AIAuditLog(
+                    lottery_code=config.LOTTERY_CODE,
+                    issue=issue,
+                    model_name=getattr(config, "GEMINI_MODEL", "gemini-2.5-flash"),
+                    prompt_payload=prompt_payload,
+                    response_raw=response_raw,
+                    latency_seconds=latency,
+                    is_success=is_success,
+                )
+                session.add(db_log)
+                logger.info(f"[DB] Saved ai_audit_log: success={is_success} latency={latency}s")
+        except Exception as ex:
+            logger.warning(f"[DB] ai_audit_log persist warning: {ex}")

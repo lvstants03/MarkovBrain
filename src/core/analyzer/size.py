@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Any
 from src.database.store import store
-from src.core.analyzer_helpers import (
+from src.core.analyzer.helpers import (
     ema, is_ar_confirmed, get_percentile, get_dynamic_confirmation
 )
 
@@ -22,10 +22,11 @@ class SizeAnalyzer:
         engine_used_size = "Heuristics"
 
         recent_history_size = history[:N_size]
+        actual_n_sz = len(recent_history_size)
         recent_tai_count_sz = sum(1 for r in recent_history_size if r.get("is_tai"))
-        recent_xiu_count = N_size - recent_tai_count_sz
-        prob_tai_sliding_sz = recent_tai_count_sz / N_size if N_size > 0 else 0.5
-        prob_xiu_sliding_sz = recent_xiu_count / N_size if N_size > 0 else 0.5
+        recent_xiu_count = actual_n_sz - recent_tai_count_sz
+        prob_tai_sliding_sz = recent_tai_count_sz / actual_n_sz if actual_n_sz > 0 else 0.5
+        prob_xiu_sliding_sz = recent_xiu_count / actual_n_sz if actual_n_sz > 0 else 0.5
 
         sliding_pred_size = "None"
         markov_pred_size = "None"
@@ -70,8 +71,17 @@ class SizeAnalyzer:
             size_decision = "MUA TÀI" if predicted_is_tai else "MUA XỈU"
             size_confidence = min(base_confidence, 70)
         else:
+            reversal_th = cfg_s.get("reversal_threshold", 0.85)
             min_prob = cfg_s.get("min_probability_threshold", 0.60)
-            if prob_tai_sliding_sz >= buy_threshold_size and ar_smooth_size < ar_threshold_size and prob_tai_sliding_sz >= min_prob:
+            if prob_tai_sliding_sz >= reversal_th:
+                size_decision = "MUA XỈU"
+                size_confidence = 65
+                size_rationale = f"Đảo chiều: Xác suất Tài cực đoan {prob_tai_sliding_sz*100:.1f}% ≥{reversal_th*100:.0f}%."
+            elif prob_xiu_sliding_sz >= reversal_th:
+                size_decision = "MUA TÀI"
+                size_confidence = 65
+                size_rationale = f"Đảo chiều: Xác suất Xỉu cực đoan {prob_xiu_sliding_sz*100:.1f}% ≥{reversal_th*100:.0f}%."
+            elif prob_tai_sliding_sz >= buy_threshold_size and ar_smooth_size < ar_threshold_size and prob_tai_sliding_sz >= min_prob:
                 size_decision = "MUA TÀI"
                 size_confidence = int(prob_tai_sliding_sz * 100)
                 size_rationale = f"Xác suất Tài {prob_tai_sliding_sz*100:.1f}% ≥{buy_threshold_size*100:.1f}%, AR trung bình, ưu tiên cao."
@@ -133,9 +143,14 @@ class SizeAnalyzer:
             stats_recent = store.get_prediction_stats_recent(limit=cfg_s["win_rate_filter_window"])
             size_wr = stats_recent.get("size", {}).get("win_rate", 0.5)
             if stats_recent.get("size", {}).get("total", 0) >= cfg_s["win_rate_filter_min_total"] and size_wr < cfg_s["win_rate_filter_threshold"] and size_decision != "BỎ QUA":
-                size_decision = "BỎ QUA"
-                size_confidence = 50
-                size_rationale = f"Bỏ qua Size do win rate {cfg_s['win_rate_filter_window']} kỳ {size_wr*100:.1f}% < {cfg_s['win_rate_filter_threshold']*100:.0f}%."
+                recent_preds = store.get_prediction_history(limit=3)
+                consecutive_ignored = sum(1 for p in recent_preds if p.get("status_size") == "ignored")
+                if consecutive_ignored < 3:
+                    size_decision = "BỎ QUA"
+                    size_confidence = 50
+                    size_rationale = f"Bỏ qua Size do win rate {cfg_s['win_rate_filter_window']} kỳ {size_wr*100:.1f}% < {cfg_s['win_rate_filter_threshold']*100:.0f}%."
+                else:
+                    logger.info(f"[Size] Đã bỏ qua {consecutive_ignored} kỳ liên tiếp do win_rate thấp, cho phép thử lại để phục hồi.")
         except Exception as e:
             logger.debug(f"Could not fetch size win rate: {e}")
 

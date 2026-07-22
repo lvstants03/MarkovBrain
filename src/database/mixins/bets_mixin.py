@@ -2,7 +2,7 @@ import json
 import time
 import logging
 from typing import List, Dict, Any, Optional
-from src.core.money_management import MoneyManager
+from src.core.money import MoneyManager, get_effective_win_rate, ALL_STRATEGIES
 from src.config import config
 
 logger = logging.getLogger(__name__)
@@ -16,12 +16,14 @@ class BetsMixin:
                 peak = self.redis_client.get(self.key_peak_demo_balance)
                 bet_amt = self.redis_client.get(self.key_demo_bet_amount)
                 strategy = self.redis_client.get(self.key_demo_bet_strategy)
-                strategy_str = "fixed"
+                strategy_str = "dkm_adaptive_pro"
                 if strategy:
                     try:
                         strategy_str = strategy.decode('utf-8')
                     except AttributeError:
                         strategy_str = str(strategy)
+                if strategy_str not in ALL_STRATEGIES:
+                    strategy_str = "dkm_adaptive_pro"
                 return {
                     "real_balance": float(real) if real else 0.0,
                     "demo_balance": float(demo) if demo else 10000000.0,
@@ -45,14 +47,18 @@ class BetsMixin:
         if self.use_redis:
             try:
                 self.redis_client.set(self.key_demo_balance, balance)
-                self.redis_client.set(self.key_peak_demo_balance, balance)
+                current_peak = float(self.redis_client.get(self.key_peak_demo_balance) or balance)
+                if balance > current_peak:
+                    self.redis_client.set(self.key_peak_demo_balance, balance)
                 return True
             except Exception as e:
                 logger.error(f"Redis error in update_demo_balance: {e}")
         with self._lock:
             self._demo_balance = balance
-            self._peak_demo_balance = balance
+            if balance > self._peak_demo_balance:
+                self._peak_demo_balance = balance
             self._save_local_store()
+        self._sync_user_balance_to_db()
         return True
 
     def set_demo_bet_strategy(self, strategy: str):
@@ -168,7 +174,6 @@ class BetsMixin:
                 self.redis_client.set(self.key_parity_loss_streak, 0)
                 self.redis_client.set(self.key_size_loss_streak, 0)
                 self.redis_client.set(self.key_initial_phase_remaining, 10)
-                return True
             except Exception as e:
                 logger.error(f"Redis error in clear_demo_bets: {e}")
         with self._lock:
@@ -183,6 +188,20 @@ class BetsMixin:
             self._size_pause_until = None
             self._initial_phase_remaining = 10
             self._save_local_store()
+
+        # Delete triet de khoi CSDL PostgreSQL
+        try:
+            from src.database.connection import get_db_session
+            from src.database.models import Bet, Prediction
+            from src.database.models.system import MarketHealthLog
+            with get_db_session() as session:
+                session.query(Bet).filter_by(lottery_code=config.LOTTERY_CODE).delete()
+                session.query(Prediction).filter_by(lottery_code=config.LOTTERY_CODE).delete()
+                session.query(MarketHealthLog).filter_by(lottery_code=config.LOTTERY_CODE).delete()
+                session.commit()
+                logger.info("[DB] Cleared all bets, predictions, and market_health_logs from PostgreSQL")
+        except Exception as ex:
+            logger.error(f"[DB] Error clearing PostgreSQL records: {ex}")
         return True
 
     def set_demo_bet_amount(self, amount: float):
@@ -216,6 +235,28 @@ class BetsMixin:
             flat_bets = []
             for issue, bets in self._demo_bets.items():
                 flat_bets.extend(bets)
+            if not flat_bets:
+                try:
+                    from src.database.connection import get_db_session
+                    from src.database.models import Bet
+                    with get_db_session() as session:
+                        rows = session.query(Bet).filter_by(
+                            lottery_code=config.LOTTERY_CODE
+                        ).order_by(Bet.id.desc()).limit(limit).all()
+                        for r in rows:
+                            flat_bets.append({
+                                "id": r.id,
+                                "issue": r.issue,
+                                "market_type": r.market_type,
+                                "bet_choice": r.bet_choice,
+                                "amount": r.amount,
+                                "win_amount": r.win_amount,
+                                "status": r.status,
+                                "time": r.created_at.strftime("%H:%M:%S %d/%m/%Y") if r.created_at else "-"
+                            })
+                        return flat_bets
+                except Exception as ex:
+                    logger.warning(f"[DB] get_demo_bets DB fallback warning: {ex}")
             flat_bets.sort(key=lambda x: x["issue"], reverse=True)
             return flat_bets[:limit]
 
@@ -419,11 +460,21 @@ class BetsMixin:
 
         is_stable = self.is_market_stable()
         prediction_stats_recent = self.get_prediction_stats_recent(15)
-        win_rate = __import__("src.core.money_management", fromlist=["get_effective_win_rate"]).get_effective_win_rate(
+        win_rate = get_effective_win_rate(
             prediction_stats_recent, market_type
         )
 
-        is_initial_phase = (self._initial_phase_remaining > 0)
+        if self.use_redis:
+            try:
+                val = self.redis_client.get(self.key_initial_phase_remaining)
+                initial_remaining = int(val) if val is not None else 10
+            except Exception:
+                initial_remaining = self._initial_phase_remaining
+        else:
+            with self._lock:
+                initial_remaining = self._initial_phase_remaining
+
+        is_initial_phase = (initial_remaining > 0)
 
         # === CIRCUIT BREAKER: WR < 45% THÌ PAUSE 10 PHÚT ===
         if not is_stable:
@@ -442,10 +493,13 @@ class BetsMixin:
                 return "paused"
 
         # === THÊM BỘ LỌC AN TOÀN CHO SIZE ===
-        # Nếu là Size và win_rate < 50%, tự động bỏ qua để bảo vệ vốn
+        # Nếu là Size và win_rate < 50%, tự động bỏ qua tối đa 3 kỳ để bảo vệ vốn rồi thử lại
         if market_type == "size" and win_rate < 0.50:
-            logger.info(f"[place_demo_bet] Bo qua Size do win_rate 15 ky {win_rate*100:.1f}% < 50%.")
-            return "paused"
+            recent_preds = self.get_prediction_history(limit=3)
+            consecutive_ignored = sum(1 for p in recent_preds if p.get("status_size") == "ignored")
+            if consecutive_ignored < 3:
+                logger.info(f"[place_demo_bet] Bo qua Size do win_rate 15 ky {win_rate*100:.1f}% < 50%.")
+                return "paused"
 
         # Truyền is_combined và market_type vào calculate_bet
         final_amount = MoneyManager.calculate_bet(
@@ -458,7 +512,7 @@ class BetsMixin:
             win_rate=win_rate,
             is_stable=is_stable,
             is_initial_phase=is_initial_phase,
-            initial_phase_remaining=self._initial_phase_remaining,
+            initial_phase_remaining=initial_remaining,
             is_combined=is_combined,
             market_type=market_type,  
             confidence=confidence,
@@ -469,9 +523,15 @@ class BetsMixin:
             return "paused"
 
         if is_initial_phase and final_amount > 0:
-            self._initial_phase_remaining -= 1
-            self._save_local_store()
-            logger.info(f"[INITIAL PHASE] Remaining: {self._initial_phase_remaining}, bet: {final_amount}")
+            if self.use_redis:
+                try:
+                    self.redis_client.decr(self.key_initial_phase_remaining)
+                except Exception as e:
+                    logger.error(f"Redis error decrementing initial_phase_remaining: {e}")
+            with self._lock:
+                self._initial_phase_remaining = max(0, self._initial_phase_remaining - 1)
+                self._save_local_store()
+            logger.info(f"[INITIAL PHASE] Remaining decreased, bet: {final_amount}")
 
         current_balance = balances["demo_balance"]
         if final_amount > current_balance:
@@ -530,6 +590,7 @@ class BetsMixin:
                         removed = self.redis_client.rpop(self.key_demo_bets_list)
                         if removed:
                             self.redis_client.hdel(self.key_demo_bets, removed)
+                self._persist_bet_to_db(bet, balances["demo_bet_strategy"])
                 return True
             except Exception as e:
                 logger.error(f"Redis error in place_demo_bet: {e}")
@@ -540,11 +601,11 @@ class BetsMixin:
             if issue not in self._demo_bets:
                 self._demo_bets[issue] = []
             self._demo_bets[issue].append(bet)
-            # Giới hạn 100 kỳ cược trong bộ nhớ
             if len(self._demo_bets) > 100:
                 oldest_key = min(self._demo_bets.keys(), key=lambda k: self._demo_bets[k][0]["timestamp"] if self._demo_bets[k] else 0)
                 self._demo_bets.pop(oldest_key, None)
             self._save_local_store()
+        self._persist_bet_to_db(bet, balances["demo_bet_strategy"])
         return True
 
     def resolve_demo_bets(self, issue: str, numbers: List[int]):
@@ -625,6 +686,8 @@ class BetsMixin:
                         logger.warning(f"[DRAWDOWN] Demo balance {self._demo_balance} dropped by 25% or more from peak {self._peak_demo_balance}. Pausing both markets for 10m.")
 
                     self._save_local_store()
+        if updated:
+            self._resolve_bets_in_db(issue)
         return updated
 
     # ============================ HTTP HEADERS ============================
@@ -706,6 +769,7 @@ class BetsMixin:
             try:
                 self.redis_client.lpush(self.key_capital_collapses, json.dumps(collapse))
                 self.redis_client.ltrim(self.key_capital_collapses, 0, 49)
+                self._persist_capital_collapse_to_db(collapse)
                 return True
             except Exception as e:
                 logger.error(f"Redis error in log_capital_collapse: {e}")
@@ -713,6 +777,7 @@ class BetsMixin:
             self._capital_collapses.insert(0, collapse)
             self._capital_collapses = self._capital_collapses[:50]
             self._save_local_store()
+        self._persist_capital_collapse_to_db(collapse)
         return True
 
     def get_capital_collapses(self, limit: int = 50) -> List[Dict[str, Any]]:
@@ -738,3 +803,118 @@ class BetsMixin:
             self._save_local_store()
         return True
 
+    # ============================ DB PERSISTENCE HELPERS ============================
+
+    def _persist_bet_to_db(self, bet: dict, strategy: str) -> None:
+        """Ghi cuoc dat vao bang bets trong CSDL (Dual-Write)."""
+        try:
+            from src.database.connection import get_db_session
+            from src.database.models.bet import Bet
+            with get_db_session() as session:
+                # Dung (lottery_code, issue, market_type) lam key chong trung
+                existing = session.query(Bet).filter_by(
+                    lottery_code=config.LOTTERY_CODE,
+                    issue=bet["issue"],
+                    market_type=bet["market_type"]
+                ).first()
+                if not existing:
+                    db_bet = Bet(
+                        user_id=1,
+                        lottery_code=config.LOTTERY_CODE,
+                        issue=bet["issue"],
+                        is_demo=True,
+                        market_type=bet["market_type"],
+                        prediction=bet["prediction"],
+                        amount=bet["amount"],
+                        strategy=strategy,
+                        status="pending",
+                        win_amount=0.0,
+                        balance_after=bet.get("balance_after", 0.0),
+                    )
+                    session.add(db_bet)
+                    logger.info(f"[DB] Saved bet: {bet['issue']} {bet['market_type']}")
+        except Exception as ex:
+            logger.warning(f"[DB] bet persist warning ({bet.get('issue')}): {ex}")
+
+    def _resolve_bets_in_db(self, issue: str) -> None:
+        """Cap nhat trang thai thang/thua cho cac cuoc cua 1 ky vao CSDL."""
+        try:
+            from datetime import datetime
+            from src.database.connection import get_db_session
+            from src.database.models.bet import Bet
+            all_bets_ram = self.get_demo_bets(limit=200)
+            resolved_map = {
+                (b["issue"], b["market_type"]): b
+                for b in all_bets_ram
+                if b.get("issue") == issue and b.get("status") in ("win", "lose")
+            }
+            if not resolved_map:
+                return
+            with get_db_session() as session:
+                db_bets = session.query(Bet).filter(
+                    Bet.lottery_code == config.LOTTERY_CODE,
+                    Bet.issue == issue,
+                    Bet.status == "pending"
+                ).all()
+                for db_bet in db_bets:
+                    key = (issue, db_bet.market_type)
+                    ram_bet = resolved_map.get(key)
+                    if ram_bet:
+                        db_bet.status = ram_bet["status"]
+                        db_bet.win_amount = ram_bet.get("win_amount", 0.0)
+                        db_bet.balance_after = ram_bet.get("balance_after", 0.0)
+                        db_bet.resolved_at = datetime.utcnow()
+                        logger.info(f"[DB] Resolved bet: {issue} {db_bet.market_type} -> {db_bet.status}")
+        except Exception as ex:
+            logger.warning(f"[DB] bet resolve warning ({issue}): {ex}")
+
+    def _sync_user_balance_to_db(self) -> None:
+        """Dong bo so du demo vao bang user_balances trong CSDL."""
+        try:
+            from src.database.connection import get_db_session
+            from src.database.models.bet import UserBalance
+            balances = self.get_balances()
+            with get_db_session() as session:
+                ub = session.query(UserBalance).filter_by(
+                    user_id=1,
+                    lottery_code=config.LOTTERY_CODE
+                ).first()
+                if ub:
+                    ub.demo_balance = balances["demo_balance"]
+                    ub.peak_demo_balance = balances["peak_demo_balance"]
+                    ub.demo_bet_amount = balances["demo_bet_amount"]
+                    ub.demo_bet_strategy = balances["demo_bet_strategy"]
+                    logger.info(f"[DB] Synced user_balance: demo={balances['demo_balance']}")
+                else:
+                    ub = UserBalance(
+                        user_id=1,
+                        lottery_code=config.LOTTERY_CODE,
+                        demo_balance=balances["demo_balance"],
+                        peak_demo_balance=balances["peak_demo_balance"],
+                        demo_bet_amount=balances["demo_bet_amount"],
+                        demo_bet_strategy=balances["demo_bet_strategy"],
+                    )
+                    session.add(ub)
+                    logger.info(f"[DB] Created user_balance record")
+        except Exception as ex:
+            logger.warning(f"[DB] user_balance sync warning: {ex}")
+
+    def _persist_capital_collapse_to_db(self, collapse: dict) -> None:
+        """Ghi su kien vo von vao bang capital_collapses trong CSDL."""
+        try:
+            from src.database.connection import get_db_session
+            from src.database.models.bet import CapitalCollapse
+            with get_db_session() as session:
+                db_collapse = CapitalCollapse(
+                    lottery_code=config.LOTTERY_CODE,
+                    issue=collapse["issue"],
+                    market_type=collapse["market_type"],
+                    loss_streak=collapse["loss_streak"],
+                    amount_required=collapse["amount_required"],
+                    balance_current=collapse["balance_current"],
+                    strategy=collapse["strategy"],
+                )
+                session.add(db_collapse)
+                logger.info(f"[DB] Saved capital_collapse: {collapse['issue']} {collapse['market_type']}")
+        except Exception as ex:
+            logger.warning(f"[DB] capital_collapse persist warning: {ex}")

@@ -98,6 +98,95 @@ async def get_predictions(limit: int = Query(default=100, ge=1, le=1000)):
         "data": history
     }
 
+class BetResultRequest(BaseModel):
+    issue: str
+    market_type: str
+    prediction: str
+    status: str
+    amount: float
+
+@router.get("/next-action")
+async def get_next_action():
+    history = store.get_history(limit=500)
+    if not history:
+        return {"status": "error", "message": "Chua co du lieu lich su"}
+
+    last_issue = history[0]["issue"]
+    next_issue = get_next_issue_code(last_issue)
+
+    scraper_curr = getattr(scraper, "current_issue", "")
+    if scraper_curr and scraper_curr > last_issue:
+        next_issue = scraper_curr
+
+    pred = store.get_prediction(next_issue)
+    if not pred and next_issue:
+        pred = store.generate_and_save_prediction(next_issue)
+
+    balances = store.get_balances()
+    strategy = balances.get("demo_bet_strategy", "dkm_adaptive_pro")
+    
+    p_rec = pred.get("predicted_parity", "Không có") if pred else "Không có"
+    s_rec = pred.get("predicted_size", "Không có") if pred else "Không có"
+
+    p_decision = "MUA LẺ" if p_rec == "Le" else "MUA CHẴN" if p_rec == "Chan" else "BỎ QUA"
+    s_decision = "MUA TÀI" if s_rec == "Tai" else "MUA XỈU" if s_rec == "Xiu" else "BỎ QUA"
+
+    p_amount = 0.0
+    s_amount = 0.0
+
+    from src.core.money import MoneyManager, get_effective_win_rate
+    streaks = store.get_loss_streaks()
+    stats_recent = store.get_prediction_stats_recent(15)
+
+    if p_decision != "BỎ QUA":
+        wr = get_effective_win_rate(stats_recent, "parity")
+        p_amount = MoneyManager.calculate_bet(
+            strategy=strategy,
+            base_amount=balances["demo_bet_amount"],
+            current_balance=balances["demo_balance"],
+            loss_streak=streaks.get("parity", 0),
+            daily_loss_count=0,
+            pause_until=None,
+            win_rate=wr,
+            market_type="parity",
+            confidence=pred.get("parity_confidence") or 0.0
+        )
+
+    if s_decision != "BỎ QUA":
+        wr = get_effective_win_rate(stats_recent, "size")
+        s_amount = MoneyManager.calculate_bet(
+            strategy=strategy,
+            base_amount=balances["demo_bet_amount"],
+            current_balance=balances["demo_balance"],
+            loss_streak=streaks.get("size", 0),
+            daily_loss_count=0,
+            pause_until=None,
+            win_rate=wr,
+            market_type="size",
+            confidence=pred.get("size_confidence") or 0.0
+        )
+
+    return {
+        "status": "success",
+        "issue": next_issue,
+        "strategy": strategy,
+        "parity": {"decision": p_decision, "amount": p_amount},
+        "size": {"decision": s_decision, "amount": s_amount}
+    }
+
+@router.post("/bet-result")
+async def post_bet_result(payload: BetResultRequest):
+    is_win = (payload.status == "win")
+    store.update_loss_streak(payload.market_type, is_win)
+    if is_win:
+        win_amt = payload.amount * 1.95
+        balances = store.get_balances()
+        store.update_demo_balance(balances["demo_balance"] + win_amt)
+    return {
+        "status": "success",
+        "message": f"Da cap nhat ket qua cuoc ky {payload.issue} ({payload.market_type}: {payload.status})"
+    }
+
 
 
 @router.post("/mock-draw")

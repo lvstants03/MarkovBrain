@@ -1,3 +1,126 @@
+// ==========================================================================
+// UI NOTIFICATION & CUSTOM CONFIRMATION SYSTEM
+// ==========================================================================
+
+function getOrCreateToastContainer() {
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toastContainer';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    return container;
+}
+
+function getOrCreateConfirmModal() {
+    let modal = document.getElementById('customConfirmModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'customConfirmModal';
+        modal.className = 'modal-overlay';
+        modal.style.display = 'none';
+        modal.innerHTML = `
+            <div class="modal-content confirm-modal-box">
+                <div class="modal-header">
+                    <h3 id="confirmModalTitle" class="confirm-modal-title">Xác Nhận Hành Động</h3>
+                </div>
+                <div class="modal-body">
+                    <p id="confirmModalMessage" class="confirm-modal-message">Bạn có chắc chắn muốn thực hiện hành động này?</p>
+                </div>
+                <div class="confirm-modal-footer">
+                    <button id="confirmModalCancelBtn" class="btn btn-secondary">Hủy Bỏ</button>
+                    <button id="confirmModalOkBtn" class="btn btn-danger">Xác Nhận</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    return modal;
+}
+
+function showToast(title, message, type = 'info', duration = 4000) {
+    const container = getOrCreateToastContainer();
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+
+    toast.innerHTML = `
+        <div class="toast-header">
+            <div class="toast-title">${title}</div>
+            <button class="toast-close" onclick="this.parentElement.parentElement.remove()">&times;</button>
+        </div>
+        <div class="toast-body">${message}</div>
+        <div class="toast-progress" style="animation-duration: ${duration}ms;"></div>
+    `;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add('toast-hiding');
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
+function showConfirmModal(title, message) {
+    return new Promise((resolve) => {
+        const modal = getOrCreateConfirmModal();
+        const titleEl = document.getElementById('confirmModalTitle');
+        const msgEl = document.getElementById('confirmModalMessage');
+        const okBtn = document.getElementById('confirmModalOkBtn');
+        const cancelBtn = document.getElementById('confirmModalCancelBtn');
+
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        modal.style.display = 'flex';
+
+        const cleanup = () => {
+            modal.style.display = 'none';
+            okBtn.onclick = null;
+            cancelBtn.onclick = null;
+        };
+
+        okBtn.onclick = () => {
+            cleanup();
+            resolve(true);
+        };
+
+        cancelBtn.onclick = () => {
+            cleanup();
+            resolve(false);
+        };
+    });
+}
+
+function notifyPrediction(predData) {
+    if (!predData) return;
+    const issue = predData.issue || 'Mới';
+    const parity = predData.parity || predData.predicted_parity || 'Không có';
+    const size = predData.size || predData.predicted_size || 'Không có';
+    const confP = predData.parity_confidence ? `${predData.parity_confidence}%` : '';
+    const confS = predData.size_confidence ? `${predData.size_confidence}%` : '';
+
+    let content = `<strong>Kỳ Quay:</strong> #${issue}<br>`;
+    if (parity !== 'Không có' && parity !== 'BỎ QUA') {
+        content += `• Chẵn/Lẻ: <strong>${parity}</strong> ${confP}<br>`;
+    }
+    if (size !== 'Không có' && size !== 'BỎ QUA') {
+        content += `• Tài/Xỉu: <strong>${size}</strong> ${confS}<br>`;
+    }
+
+    showToast(`Tín Hiệu Dự Đoán #${issue}`, content, 'prediction', 6000);
+}
+
+function notifyBetPlacement(betData) {
+    if (!betData) return;
+    const issue = betData.issue || '';
+    const market = betData.market || '';
+    const choice = betData.choice || '';
+    const amount = betData.amount ? `${Number(betData.amount).toLocaleString('vi-VN')} VNĐ` : '';
+
+    const content = `<strong>Kỳ Quay:</strong> #${issue}<br>• Hạng mục: ${market}<br>• Lựa chọn: <strong>${choice}</strong><br>• Tiền cược: <strong>${amount}</strong>`;
+    showToast(`Đặt Cược Thành Công #${issue}`, content, 'bet', 6000);
+}
+
 // Tab Navigation Logic
 function switchTab(tabId) {
     document.querySelectorAll('.tab-panel').forEach(panel => {
@@ -6,11 +129,11 @@ function switchTab(tabId) {
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
     });
-    
+
     document.getElementById(tabId).classList.add('active');
-    
+
     // Find the clicked nav item by its onclick attribute or text
-    const clickedItem = Array.from(document.querySelectorAll('.nav-item')).find(item => 
+    const clickedItem = Array.from(document.querySelectorAll('.nav-item')).find(item =>
         item.getAttribute('onclick') && item.getAttribute('onclick').includes(tabId)
     );
     if (clickedItem) {
@@ -51,21 +174,21 @@ function copyConsoleCode() {
     const code = document.getElementById('consoleCode');
     code.select();
     document.execCommand('copy');
-    alert('Đã copy mã Console vào clipboard!');
+    showToast('Thành Công', 'Đã copy mã Console vào clipboard!', 'success');
 }
 
 function copyBookmarkletCode() {
     const code = document.getElementById('bookmarkletCode');
     code.select();
     document.execCommand('copy');
-    alert('Đã copy mã Bookmarklet vào clipboard!');
+    showToast('Thành Công', 'Đã copy mã Bookmarklet vào clipboard!', 'success');
 }
 
 function copyTampermonkeyCode() {
     const code = document.getElementById('tampermonkeyCode');
     code.select();
     document.execCommand('copy');
-    alert('Đã copy mã Tampermonkey Script vào clipboard!');
+    showToast('Thành Công', 'Đã copy mã Tampermonkey Script vào clipboard!', 'success');
 }
 
 let demoBetsCurrentPage = 1;
@@ -94,10 +217,10 @@ async function fetchRealtimeData() {
         // 1. Fetch statistics and AI Recommendations
         const statsResponse = await fetch('/api/statistics?limit=500&t=' + Date.now());
         const statsData = await statsResponse.json();
-        
+
         if (statsData.status === 'success') {
             data = statsData.data;
-            
+
             // Sync active game dropdown and header title
             const activeVal = `${statsData.lottery_id}_${statsData.lottery_code}`;
             const gameSelect = document.getElementById('gameSelect');
@@ -110,7 +233,7 @@ async function fetchRealtimeData() {
                 '45_pmb5p': 'Miền Bắc 5 Phút'
             };
             const activeName = gameNames[activeVal] || statsData.lottery_code;
-            
+
             const gameTitleElem = document.getElementById('activeGameTitle');
             if (gameTitleElem) {
                 gameTitleElem.innerText = `(${activeName})`;
@@ -119,7 +242,7 @@ async function fetchRealtimeData() {
             if (activeGameLabelEl) {
                 activeGameLabelEl.innerText = activeName;
             }
-            
+
             const drawLabel = document.getElementById('drawHistoryGameLabel');
             if (drawLabel) {
                 drawLabel.innerText = `(${activeName})`;
@@ -133,17 +256,17 @@ async function fetchRealtimeData() {
                 socketLabel.innerText = `(${activeName})`;
             }
             document.getElementById('totalRecordsAnalyzed').innerText = data.total_records || 0;
-            
+
             // Update Parity Streak Details
             const leStreak = data.streaks.le_streak;
             const parityStateName = leStreak.state === 'Le' ? 'Lẻ' : 'Chẵn';
             document.getElementById('streakParityText').innerText = `Đang bệt ${parityStateName} (${leStreak.count} kỳ) | Kỷ lục: ${leStreak.max_history} kỳ`;
-            
+
             // Update Size Streak Details
             const taiStreak = data.streaks.tai_streak;
             const sizeStateName = taiStreak.state === 'Tai' ? 'Tài' : 'Xỉu';
             document.getElementById('streakSizeText').innerText = `Đang bệt ${sizeStateName} (${taiStreak.count} kỳ) | Kỷ lục: ${taiStreak.max_history} kỳ`;
-            
+
             // Update Next-Issue Probabilities
             const nextIssue = data.prediction_for_next_issue || {};
             const probLe = nextIssue.le_probability;
@@ -164,12 +287,12 @@ async function fetchRealtimeData() {
             const pConf = document.getElementById('parityConfidence');
             const pBar = document.getElementById('parityConfidenceBar');
             const pRationale = document.getElementById('parityRationale');
-            
+
             pDecision.innerText = parityRec.decision;
             pConf.innerText = `Độ tin cậy: ${parityRec.confidence}%`;
             pBar.style.width = `${parityRec.confidence}%`;
             pRationale.innerText = parityRec.rationale;
-            
+
             if (parityRec.decision !== 'BỎ QUA') {
                 pBox.className = 'rec-box win-recommendation';
                 pBadge.className = 'decision-badge decision-buy';
@@ -179,7 +302,7 @@ async function fetchRealtimeData() {
                 pBadge.className = 'decision-badge decision-nobet';
                 pBadge.innerText = 'NO BET';
             }
-            
+
             // Update AI Size Recommendation
             const sizeRec = data.ai_recommendation.size;
             const sBox = document.getElementById('sizeRecBox');
@@ -188,12 +311,12 @@ async function fetchRealtimeData() {
             const sConf = document.getElementById('sizeConfidence');
             const sBar = document.getElementById('sizeConfidenceBar');
             const sRationale = document.getElementById('sizeRationale');
-            
+
             sDecision.innerText = sizeRec.decision;
             sConf.innerText = `Độ tin cậy: ${sizeRec.confidence}%`;
             sBar.style.width = `${sizeRec.confidence}%`;
             sRationale.innerText = sizeRec.rationale;
-            
+
             if (sizeRec.decision !== 'BỎ QUA') {
                 sBox.className = 'rec-box win-recommendation';
                 sBadge.className = 'decision-badge decision-buy';
@@ -204,28 +327,28 @@ async function fetchRealtimeData() {
                 sBadge.innerText = 'NO BET';
             }
         }
-        
+
         // 2. Fetch history of draws (15 records)
         const historyResponse = await fetch('/api/history?limit=15&t=' + Date.now());
         const historyData = await historyResponse.json();
-        
+
         if (historyData.status === 'success') {
             const drawTableBody = document.getElementById('drawHistoryTable');
             drawTableBody.innerHTML = '';
-            
+
             if (historyData.data.length === 0) {
                 drawTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Không có dữ liệu xổ số trong bộ nhớ.</td></tr>`;
             } else {
                 historyData.data.forEach(item => {
                     const hasNumbers = item.numbers && item.numbers.length > 0;
-                    const balls = hasNumbers 
+                    const balls = hasNumbers
                         ? item.numbers.map(num => `<span class="ball">${num}</span>`).join('')
                         : `<span style="color: var(--text-muted); font-size: 0.8rem; font-style: italic;">Chỉ nạp thống kê</span>`;
                     const totalDisplay = hasNumbers ? item.total : '-';
                     const parityLabel = item.is_le ? 'Lẻ' : 'Chẵn';
                     const sizeLabel = item.is_tai ? 'Tài' : 'Xỉu';
                     const timeStr = item.time ? item.time : '-';
-                    
+
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td style="font-weight: 600;">${item.issue}</td>
@@ -239,11 +362,11 @@ async function fetchRealtimeData() {
                 });
             }
         }
-        
+
         // 3. Fetch prediction results and win rates
         const predictionsResponse = await fetch('/api/predictions?limit=15&t=' + Date.now());
         const predData = await predictionsResponse.json();
-        
+
         if (predData.status === 'success') {
             // Update AI Engine Badge
             const aiEngineBadge = document.getElementById('aiEngineBadge');
@@ -258,17 +381,17 @@ async function fetchRealtimeData() {
             if (overallWinRateEl && stats && typeof stats.overall_win_rate === 'number') {
                 overallWinRateEl.innerText = `${(stats.overall_win_rate * 100).toFixed(1)}%`;
             }
-            
+
             document.getElementById('parityWinRate').innerText = `${(stats.parity.win_rate * 100).toFixed(1)}%`;
             document.getElementById('parityWinRatio').innerText = `${stats.parity.wins}/${stats.parity.total}`;
-            
+
             document.getElementById('sizeWinRate').innerText = `${(stats.size.win_rate * 100).toFixed(1)}%`;
             document.getElementById('sizeWinRatio').innerText = `${stats.size.wins}/${stats.size.total}`;
-            
+
             // Render prediction history table
             const predTableBody = document.getElementById('predictionHistoryTable');
             predTableBody.innerHTML = '';
-            
+
             if (predData.data.length === 0) {
                 predTableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">Chưa có lịch sử dự đoán cược nào.</td></tr>`;
             } else {
@@ -282,14 +405,14 @@ async function fetchRealtimeData() {
                     const timeStr = item.time ? item.time : '-';
                     const pConfStr = (item.predicted_parity !== 'Không có' && item.parity_confidence) ? `${item.parity_confidence}%` : '-';
                     const sConfStr = (item.predicted_size !== 'Không có' && item.size_confidence) ? `${item.size_confidence}%` : '-';
-                    
+
                     let actualResultStr = '-';
                     if (item.actual_parity || item.actual_size) {
                         const actP = item.actual_parity === 'Le' ? 'Lẻ' : 'Chẵn';
                         const actS = item.actual_size === 'Tai' ? 'Tài' : 'Xỉu';
                         actualResultStr = `${actS} / ${actP}`;
                     }
-                    
+
                     // Badges for Status
                     let statusBadgeHtml = '';
                     if (item.status_parity === 'pending' || item.status_size === 'pending') {
@@ -297,7 +420,7 @@ async function fetchRealtimeData() {
                     } else {
                         const isParityWin = item.status_parity === 'win';
                         const isSizeWin = item.status_size === 'win';
-                        
+
                         if (item.status_parity === 'ignored' && item.status_size === 'ignored') {
                             statusBadgeHtml = `<span class="status-badge" style="background: rgba(255,255,255,0.05); color: var(--text-muted);">Bỏ qua</span>`;
                         } else {
@@ -307,7 +430,7 @@ async function fetchRealtimeData() {
                             if (item.status_parity === 'lose') lossCount++;
                             if (item.status_size === 'win') winCount++;
                             if (item.status_size === 'lose') lossCount++;
-                            
+
                             if (lossCount === 0) {
                                 statusBadgeHtml = `<span class="status-badge status-win">THẮNG</span>`;
                             } else if (winCount === 0) {
@@ -317,7 +440,7 @@ async function fetchRealtimeData() {
                             }
                         }
                     }
-                    
+
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td style="font-weight: 600;">${item.issue}</td>
@@ -333,7 +456,7 @@ async function fetchRealtimeData() {
                 });
             }
         }
-        
+
         // Fetch Balance & Demo Bets Info
         try {
             const balanceResponse = await fetch(`/api/balance?page=${demoBetsCurrentPage}&limit=${demoBetsPageSize}&t=${Date.now()}`);
@@ -346,7 +469,7 @@ async function fetchRealtimeData() {
                 if (pageTextEl) {
                     pageTextEl.innerText = `Trang ${demoBetsCurrentPage} / ${totalPages}`;
                 }
-                
+
                 const btnPrev = document.getElementById('btnPrevDemoPage');
                 const btnNext = document.getElementById('btnNextDemoPage');
                 if (btnPrev) btnPrev.disabled = demoBetsCurrentPage <= 1;
@@ -370,7 +493,7 @@ async function fetchRealtimeData() {
                 }
                 const b = balanceData.balances;
                 document.getElementById('realBalanceVal').innerText = `${b.real_balance.toLocaleString('vi-VN')} VND`;
-                
+
                 // Update sidebar balance display
                 const sidebarRealBalEl = document.getElementById('sidebarRealBalanceVal');
                 if (sidebarRealBalEl) {
@@ -383,7 +506,7 @@ async function fetchRealtimeData() {
 
                 const demoBalEl = document.getElementById('demoBalanceVal');
                 demoBalEl.innerText = `${b.demo_balance.toLocaleString('vi-VN')} VND`;
-                
+
                 // Toggle overdraft banner
                 const overdraftBanner = document.getElementById('overdraftWarningBanner');
                 if (balanceData.is_bankrupt) {
@@ -393,25 +516,25 @@ async function fetchRealtimeData() {
                     overdraftBanner.style.display = 'none';
                     demoBalEl.style.color = 'var(--primary)';
                 }
-                
+
                 const betInput = document.getElementById('demoBetAmountInput');
                 if (betInput && !betInput.matches(':focus')) {
                     betInput.value = b.demo_bet_amount.toLocaleString('vi-VN');
                 }
-                
+
                 const strategySelect = document.getElementById('betStrategySelect');
                 if (strategySelect && !strategySelect.matches(':focus')) {
                     strategySelect.value = b.demo_bet_strategy || 'fixed';
                 }
-                
+
                 const maxStreak = balanceData.max_loss_streak_tolerated || 0;
                 const maxStreakValEl = document.getElementById('maxStreakVal');
                 const riskWarningTextEl = document.getElementById('riskWarningText');
                 const riskAnalysisPanelEl = document.getElementById('riskAnalysisPanel');
-                
+
                 if (maxStreakValEl) {
                     maxStreakValEl.innerText = `${maxStreak} kỳ`;
-                    
+
                     if (maxStreak >= 6) {
                         maxStreakValEl.style.color = 'var(--success)';
                         riskAnalysisPanelEl.style.background = 'rgba(16, 185, 129, 0.08)';
@@ -432,7 +555,7 @@ async function fetchRealtimeData() {
                         riskWarningTextEl.style.color = '#ef4444';
                     }
                 }
-                
+
                 // Update next bet amount displays on the recommendation cards
                 if (balanceData.next_bet_amounts) {
                     const n = balanceData.next_bet_amounts;
@@ -474,7 +597,7 @@ async function fetchRealtimeData() {
                 if (balanceData.risk_info) {
                     renderCapitalRiskPanel(balanceData.risk_info, balanceData.balances);
                 }
-                
+
                 const demoBetsTable = document.getElementById('demoBetsTable');
                 demoBetsTable.innerHTML = '';
                 if (balanceData.demo_bets.length === 0) {
@@ -484,7 +607,7 @@ async function fetchRealtimeData() {
                         const marketText = bet.market_type === 'parity' ? 'Chẵn/Lẻ' : 'Tài/Xỉu';
                         const statusClass = bet.status === 'win' ? 'status-win' : bet.status === 'lose' ? 'status-lose' : 'status-pending';
                         const statusText = bet.status === 'win' ? 'THẮNG' : bet.status === 'lose' ? 'THUA' : 'Đang chờ';
-                        
+
                         let resultColor = 'var(--text-muted)';
                         let resultText = '-';
                         if (bet.status === 'win') {
@@ -494,7 +617,7 @@ async function fetchRealtimeData() {
                             resultColor = '#ef4444';
                             resultText = '-' + bet.amount.toLocaleString('vi-VN');
                         }
-                        
+
                         let engineColor = 'var(--text-muted)';
                         const engineVal = bet.engine || 'Heuristics';
                         if (engineVal === 'Combined') {
@@ -520,7 +643,7 @@ async function fetchRealtimeData() {
                         demoBetsTable.appendChild(tr);
                     });
                 }
-                
+
                 // Update Capital Collapses table
                 const demoCollapsesTable = document.getElementById('demoCollapsesTable');
                 if (demoCollapsesTable && balanceData.capital_collapses) {
@@ -551,7 +674,7 @@ async function fetchRealtimeData() {
         } catch (balanceError) {
             console.error("Error fetching balance data:", balanceError);
         }
-        
+
         // 4. Update Socket status and next issue headers
         const drawHistoryTable = document.getElementById('drawHistoryTable');
         if (drawHistoryTable.rows[0] && drawHistoryTable.rows[0].cells[0] && drawHistoryTable.rows[0].cells[0].innerText !== 'Đang tải dữ liệu xổ số...') {
@@ -560,7 +683,7 @@ async function fetchRealtimeData() {
             document.getElementById('parityNextIssue').innerText = `Kỳ tiếp theo: ${nextIssueStr}`;
             document.getElementById('sizeNextIssue').innerText = `Kỳ tiếp theo: ${nextIssueStr}`;
         }
-        
+
         // 5. Fetch socket history logs
         const socketResponse = await fetch('/api/socket/history?limit=15&t=' + Date.now());
         const socketData = await socketResponse.json();
@@ -573,7 +696,7 @@ async function fetchRealtimeData() {
                 socketData.data.forEach(item => {
                     const date = new Date(item.timestamp * 1000);
                     const timeStr = date.toLocaleTimeString() + ' ' + date.toLocaleDateString();
-                    
+
                     let badgeBg = 'rgba(239, 68, 68, 0.15)';
                     let badgeColor = '#ef4444';
                     let eventName = item.event;
@@ -590,7 +713,7 @@ async function fetchRealtimeData() {
                         badgeColor = '#f59e0b';
                         eventName = 'THỬ LẠI';
                     }
-                    
+
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td style="color: var(--text-muted); font-size: 0.9rem; white-space: nowrap;">${timeStr}</td>
@@ -601,17 +724,17 @@ async function fetchRealtimeData() {
                 });
             }
         }
-        
+
         // 6. Fetch market analysis
         const marketResponse = await fetch('/api/market-analysis?limit=100&t=' + Date.now());
         const marketData = await marketResponse.json();
         if (marketData.status === 'success' && marketData.data) {
             const analysis = marketData.data;
-            
+
             // Update latest block info
             const latestBlockStatusEl = document.getElementById('latestBlockStatus');
             const latestBlockWinRateEl = document.getElementById('latestBlockWinRate');
-            
+
             if (analysis.blocks_30 && analysis.blocks_30.length > 0) {
                 const latestBlock = analysis.blocks_30[0];
                 latestBlockStatusEl.innerText = latestBlock.status;
@@ -621,7 +744,7 @@ async function fetchRealtimeData() {
                 latestBlockStatusEl.innerText = '-';
                 latestBlockWinRateEl.innerText = '-';
             }
-            
+
             // Render blocks table
             const marketTableBody = document.getElementById('marketBlocksTable');
             marketTableBody.innerHTML = '';
@@ -641,7 +764,7 @@ async function fetchRealtimeData() {
                     marketTableBody.appendChild(tr);
                 });
             }
-            
+
             // Render weird breaks table
             const weirdTableBody = document.getElementById('weirdBreaksTable');
             weirdTableBody.innerHTML = '';
@@ -658,8 +781,11 @@ async function fetchRealtimeData() {
                     weirdTableBody.appendChild(tr);
                 });
             }
+
+            // Fetch & Render Golden Hours + Market Health Analytics
+            fetchAndRenderMarketHealthAnalytics();
         }
-        
+
     } catch (err) {
         console.error("Error polling statistics details:", err);
     }
@@ -678,15 +804,15 @@ async function updateToken() {
     const token = document.getElementById('tokenInput').value.trim();
     const cfAuthToken = document.getElementById('cfAuthTokenInput').value.trim();
     const cookie = document.getElementById('cookieInput').value.trim();
-    
+
     if (!token) {
-        alert("Vui lòng dán token hợp lệ.");
+        showToast('Cảnh Báo', 'Vui lòng dán token hợp lệ.', 'warning');
         return;
     }
     try {
         const response = await fetch('/api/config-token', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 token: token,
                 cf_auth_token: cfAuthToken || null,
@@ -695,27 +821,27 @@ async function updateToken() {
         });
         const res = await response.json();
         if (res.status === 'success') {
-            alert("Cập nhật Token và cấu hình HTTP Auth thành công!");
+            showToast('Thành Công', 'Cập nhật Token và cấu hình HTTP Auth thành công!', 'success');
             document.getElementById('tokenInput').value = '';
             document.getElementById('cfAuthTokenInput').value = '';
             document.getElementById('cookieInput').value = '';
             fetchRealtimeData();
         } else {
-            alert("Lỗi: " + res.message);
+            showToast('Lỗi', 'Lỗi: ' + res.message, 'error');
         }
     } catch (e) {
-        alert("Không thể kết nối đến API: " + e);
+        showToast('Lỗi Kết Nối', 'Không thể kết nối đến API: ' + e, 'error');
     }
 }
 
 async function triggerReconnect() {
     try {
-        const response = await fetch('/api/reconnect', {method: 'POST'});
+        const response = await fetch('/api/reconnect', { method: 'POST' });
         const res = await response.json();
-        alert(res.message);
+        showToast('Thông Báo', res.message, 'info');
         fetchRealtimeData();
     } catch (e) {
-        alert("Lỗi kết nối lại: " + e);
+        showToast('Lỗi Kết Nối', 'Lỗi kết nối lại: ' + e, 'error');
     }
 }
 
@@ -725,47 +851,47 @@ async function changeGame() {
     try {
         const response = await fetch('/api/config-lottery', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({lottery_id: parseInt(id), lottery_code: code})
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lottery_id: parseInt(id), lottery_code: code })
         });
         const res = await response.json();
         if (res.status === 'success') {
-            alert(`Đã chuyển đổi thành công sang game mới! Hệ thống đang tải lại dữ liệu...`);
+            showToast('Thành Công', 'Đã chuyển đổi thành công sang game mới! Hệ thống đang tải lại dữ liệu...', 'success');
             fetchRealtimeData();
         } else {
-            alert("Lỗi: " + res.message);
+            showToast('Lỗi', 'Lỗi: ' + res.message, 'error');
         }
     } catch (e) {
-        alert("Lỗi kết nối API: " + e);
+        showToast('Lỗi API', 'Lỗi kết nối API: ' + e, 'error');
     }
 }
 
 async function resetDemoBalance() {
-    if (confirm("Bạn có chắc chắn muốn reset số dư giả lập về 10,000,000 VND và xóa toàn bộ lịch sử cược ảo không?")) {
+    if (await showConfirmModal('Reset Số Dư', 'Bạn có chắc chắn muốn reset số dư giả lập về 10,000,000 VND và xóa toàn bộ lịch sử cược ảo không?')) {
         try {
             const response = await fetch('/api/balance/reset', { method: 'POST' });
             const res = await response.json();
             if (res.status === 'success') {
-                alert(res.message);
+                showToast('Thành Công', res.message, 'success');
                 fetchRealtimeData();
             }
-        } catch(e) {
-            alert("Lỗi khi reset số dư: " + e);
+        } catch (e) {
+            showToast('Lỗi', 'Lỗi khi reset số dư: ' + e, 'error');
         }
     }
 }
 
 async function clearDemoBets() {
-    if (confirm("Bạn có chắc chắn muốn XÓA TOÀN BỘ hệ thống (kỳ quay, lịch sử dự đoán, nhật ký cược) và tải lại dữ liệu mới nhất không? (Số dư giả lập hiện tại sẽ được GIỮ NGUYÊN)")) {
+    if (await showConfirmModal('Reset Hệ Thống', 'Bạn có chắc chắn muốn XÓA TOÀN BỘ hệ thống (kỳ quay, lịch sử dự đoán, nhật ký cược) và tải lại dữ liệu mới nhất không? (Số dư giả lập hiện tại sẽ được GIỮ NGUYÊN)')) {
         try {
             const response = await fetch('/api/balance/clear-bets', { method: 'POST' });
             const res = await response.json();
             if (res.status === 'success') {
-                alert(res.message);
+                showToast('Thành Công', res.message, 'success');
                 fetchRealtimeData();
             }
-        } catch(e) {
-            alert("Lỗi khi xóa nhật ký cược: " + e);
+        } catch (e) {
+            showToast('Lỗi', 'Lỗi khi xóa nhật ký cược: ' + e, 'error');
         }
     }
 }
@@ -807,7 +933,7 @@ function renderCapitalRiskPanel(riskInfo, balances) {
     const dailyRow = dailyLimit !== null && dailyLimit !== undefined
         ? `<div style="display:flex;justify-content:space-between;padding:0.35rem 0;border-bottom:1px solid rgba(255,255,255,0.06);">
                <span style="color:var(--text-muted);">Thua trong 24h (Chan/Le / Tai/Xiu)</span>
-               <span style="font-weight:600;color:${(dailyP>=dailyLimit||dailyS>=dailyLimit)?'#ef4444':'#a5b4fc'};">${dailyP} / ${dailyS} <span style="color:var(--text-muted);font-weight:400;">(gioi han: ${dailyLimit})</span></span>
+               <span style="font-weight:600;color:${(dailyP >= dailyLimit || dailyS >= dailyLimit) ? '#ef4444' : '#a5b4fc'};">${dailyP} / ${dailyS} <span style="color:var(--text-muted);font-weight:400;">(gioi han: ${dailyLimit})</span></span>
            </div>`
         : '';
 
@@ -849,7 +975,7 @@ async function updateDemoBetAmount() {
     const strategy = document.getElementById('betStrategySelect').value;
 
     if (isNaN(amount) || amount <= 0) {
-        alert("Vui long nhap muc cuoc hop le!");
+        showToast('Cảnh Báo', 'Vui lòng nhập mức cược hợp lệ!', 'warning');
         return;
     }
     try {
@@ -864,12 +990,13 @@ async function updateDemoBetAmount() {
         const res = await response.json();
         if (res.status === 'success') {
             input.value = amount.toLocaleString('vi-VN');
+            showToast('Thành Công', 'Đã cập nhật mức cược!', 'success');
             fetchRealtimeData();
         } else {
-            alert(res.message);
+            showToast('Lỗi', res.message, 'error');
         }
-    } catch(e) {
-        alert("Loi khi cap nhat muc cuoc: " + e);
+    } catch (e) {
+        showToast('Lỗi', 'Lỗi khi cập nhật mức cược: ' + e, 'error');
     }
 }
 
@@ -878,7 +1005,7 @@ async function setManualDemoBalance() {
     const cleanVal = input.value.replace(/[\.,]/g, '');
     const balance = parseFloat(cleanVal);
     if (isNaN(balance) || balance < 0) {
-        alert("Vui long nhap so du gia lap hop le!");
+        showToast('Cảnh Báo', 'Vui lòng nhập số dư giả lập hợp lệ!', 'warning');
         return;
     }
     try {
@@ -890,6 +1017,7 @@ async function setManualDemoBalance() {
         const res = await response.json();
         if (res.status === 'success') {
             input.value = '';
+            showToast('Thành Công', 'Đã cập nhật số dư giả lập!', 'success');
             fetchRealtimeData();
             if (res.recommended_bet) {
                 const panel = document.getElementById('smartBetRecommendPanel');
@@ -928,10 +1056,10 @@ async function setManualDemoBalance() {
                 }
             }
         } else {
-            alert(res.message);
+            showToast('Lỗi', res.message, 'error');
         }
     } catch (e) {
-        alert("Loi khi cap nhat so du gia lap: " + e);
+        showToast('Lỗi', 'Lỗi khi cập nhật số dư giả lập: ' + e, 'error');
     }
 }
 
@@ -953,15 +1081,15 @@ async function updateSocketStatus() {
     try {
         const statsResponse = await fetch('/api/statistics?limit=1&t=' + Date.now());
         const statsData = await statsResponse.json();
-        
+
         const wsBadge = document.getElementById('wsStatusBadge');
         const sidebarWsBadge = document.getElementById('sidebarWsStatusBadge');
-        
+
         if (statsData.status === 'success') {
             const wsState = statsData.ws_status || 'disconnected';
             let className = 'badge status-offline';
             let text = 'Socket: Disconnected';
-            
+
             if (wsState === 'connected') {
                 className = 'badge status-online';
                 text = 'Socket: Connected';
@@ -969,7 +1097,7 @@ async function updateSocketStatus() {
                 className = 'badge status-connecting';
                 text = 'Socket: Connecting';
             }
-            
+
             if (wsBadge) {
                 wsBadge.className = className;
                 wsBadge.innerText = text;
@@ -979,7 +1107,7 @@ async function updateSocketStatus() {
                 sidebarWsBadge.innerHTML = `<span class="badge-pulse"></span>${wsState === 'connected' ? 'Kết nối trực tiếp' : wsState === 'connecting' ? 'Đang kết nối...' : 'Đã ngắt kết nối'}`;
             }
         }
-    } catch(e) {
+    } catch (e) {
         const wsBadge = document.getElementById('wsStatusBadge');
         if (wsBadge) {
             wsBadge.className = 'badge status-offline';
@@ -997,16 +1125,16 @@ async function triggerGameReload() {
     try {
         const response = await fetch('/api/script/reload', { method: 'POST' });
         const res = await response.json();
-        alert(res.message);
+        showToast('Thông Báo', res.message, 'info');
     } catch (e) {
-        alert("Lỗi gửi yêu cầu tải lại trang game: " + e);
+        showToast('Lỗi', 'Lỗi gửi yêu cầu tải lại trang game: ' + e, 'error');
     }
 }
 
 // Generate the codes dynamically on page load based on current window location
 function generateAutomationCodes() {
     const host = window.location.origin;
-    
+
     // 1. Console Code
     const consoleCode = `(function() {
     let storedToken = null;
@@ -1122,10 +1250,10 @@ function generateAutomationCodes() {
         .catch(e => {});
     }, 2000);
 })();`;
-    
+
     // 2. Bookmarklet Code (minified and wrapped in javascript:)
     const bookmarkletCode = `javascript:(function(){let sT=null,sC=null,isU=false,rT=null;window.addEventListener("beforeunload",()=>isU=true);function sR(r){if(isU||rT)return;rT=setTimeout(()=>{if(!isU)window.location.reload()},3000)}const oF=window.fetch;function sB(){if(!sT)return;oF("${host}/api/config-token",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:sT,cf_auth_token:sC||null,cookie:document.cookie||null})})}const O=window.WebSocket;window.WebSocket=function(u,p){const m=u.includes("token=");if(m){try{sT=u.split("token=")[1].split("&")[0];sB()}catch(e){}}const w=new O(u,p);if(m){w.addEventListener("close",()=>sR("WS close"));w.addEventListener("error",()=>sR("WS error"))}return w};window.WebSocket.prototype=O.prototype;window.fetch=async function(r,i){if(i&&i.headers){let c=null;if(i.headers.get&&typeof i.headers.get==="function"){c=i.headers.get("cf-auth-token")}else{for(let k in i.headers){if(k.toLowerCase()==="cf-auth-token"){c=i.headers[k];break}}}if(c&&c!==sC){sC=c;sB()}}return oF.apply(this,arguments)};const OX=window.XMLHttpRequest;const oS=OX.prototype.setRequestHeader;OX.prototype.setRequestHeader=function(h,v){if(h&&h.toLowerCase()==="cf-auth-token"){if(v!==sC){sC=v;sB()}}return oS.apply(this,arguments)};alert("Đã kích hoạt auto-intercept! Vui lòng chọn lại game để đồng bộ.");setInterval(function(){oF("${host}/api/script/command").then(r=>r.json()).then(d=>{if(d&&d.command==="reload")sR("Local Command")}).catch(e=>{})},2000);})();`;
-    
+
     // 3. Tampermonkey script code
     const tampermonkeyCode = `// ==UserScript==
 // @name         EE88 Token Auto-Sync với Auto-Reload
@@ -1272,18 +1400,18 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchRealtimeData();
     updateSocketStatus();
     generateAutomationCodes();
-    
+
     // 2. Setup intervals
     setInterval(fetchRealtimeData, 3000); // Poll recommendations & data every 3 seconds
     setInterval(updateSocketStatus, 5000); // Check socket status every 5 seconds
-    
+
     // 3. Event Listeners for inputs
     const betInput = document.getElementById('demoBetAmountInput');
     if (betInput) {
-        betInput.addEventListener('focus', function(e) {
+        betInput.addEventListener('focus', function (e) {
             this.value = this.value.replace(/[\.,]/g, '');
         });
-        betInput.addEventListener('blur', function(e) {
+        betInput.addEventListener('blur', function (e) {
             let val = this.value.replace(/[\.,]/g, '');
             if (!isNaN(parseFloat(val)) && val.trim() !== '') {
                 this.value = parseFloat(val).toLocaleString('vi-VN');
@@ -1292,14 +1420,513 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const balanceInput = document.getElementById('demoBalanceEditInput');
     if (balanceInput) {
-        balanceInput.addEventListener('focus', function(e) {
+        balanceInput.addEventListener('focus', function (e) {
             this.value = this.value.replace(/[\.,]/g, '');
         });
-        balanceInput.addEventListener('blur', function(e) {
+        balanceInput.addEventListener('blur', function (e) {
             let val = this.value.replace(/[\.,]/g, '');
             if (!isNaN(parseFloat(val)) && val.trim() !== '') {
                 this.value = parseFloat(val).toLocaleString('vi-VN');
             }
         });
     }
+
+    fetchAndRenderSidebarConfig();
 });
+
+async function fetchAndRenderSidebarConfig() {
+    try {
+        const res = await fetch('/api/config');
+        if (res.ok) {
+            const data = await res.json();
+            const parityCfg = data.parity_config || {};
+            const sizeCfg = data.size_config || {};
+
+            const buyMin = parityCfg.buy_threshold_min !== undefined ? parityCfg.buy_threshold_min : 0.55;
+            const revTh = parityCfg.reversal_threshold !== undefined ? parityCfg.reversal_threshold : 0.85;
+            const arMin = parityCfg.ar_window_min || 10;
+            const arMax = parityCfg.ar_window_max || 30;
+            const arThMin = parityCfg.ar_threshold_min || 0.70;
+            const arThMax = parityCfg.ar_threshold_max || 0.88;
+            const cooling = parityCfg.cooling_off_loss_limit || 2;
+            const winPause = parityCfg.win_streak_pause_limit || 2;
+
+            if (document.getElementById('sbBuyTh')) {
+                document.getElementById('sbBuyTh').innerText = `${buyMin} (${(buyMin * 100).toFixed(0)}%)`;
+            }
+            if (document.getElementById('sbRevTh')) {
+                document.getElementById('sbRevTh').innerText = `${revTh} (${(revTh * 100).toFixed(0)}%)`;
+            }
+            if (document.getElementById('sbArWin')) {
+                document.getElementById('sbArWin').innerText = `${arMin} - ${arMax} kỳ`;
+            }
+            if (document.getElementById('sbArTh')) {
+                document.getElementById('sbArTh').innerText = `${arThMin} - ${arThMax}`;
+            }
+            if (document.getElementById('sbCooling')) {
+                document.getElementById('sbCooling').innerText = `${cooling} kỳ thua`;
+            }
+            if (document.getElementById('sbWinPause')) {
+                document.getElementById('sbWinPause').innerText = `${winPause} kỳ thắng`;
+            }
+
+            // Bind values into Config Form inputs & JSON textareas if on configTab
+            populateFormInputsFromConfig(parityCfg, sizeCfg);
+        }
+    } catch (e) {
+        console.warn('Could not load sidebar config:', e);
+    }
+}
+
+function populateFormInputsFromConfig(parityCfg, sizeCfg) {
+    if (!parityCfg) parityCfg = {};
+    if (!sizeCfg) sizeCfg = {};
+
+    const bind = (id, val, defaultVal, isCheckbox = false) => {
+        const el = document.getElementById(id);
+        if (el) {
+            if (isCheckbox) {
+                el.checked = val !== undefined ? Boolean(val) : defaultVal;
+            } else {
+                el.value = val !== undefined ? val : defaultVal;
+            }
+        }
+    };
+
+    // Parity Form Bindings (33 fields)
+    bind('cfg_p_buy_min', parityCfg.buy_threshold_min, 0.55);
+    bind('cfg_p_buy_max', parityCfg.buy_threshold_max, 0.82);
+    bind('cfg_p_rev', parityCfg.reversal_threshold, 0.85);
+    bind('cfg_p_n_min', parityCfg.n_sliding_min, 12);
+    bind('cfg_p_n_max', parityCfg.n_sliding_max, 20);
+    bind('cfg_p_ar_min', parityCfg.ar_window_min, 10);
+    bind('cfg_p_ar_max', parityCfg.ar_window_max, 30);
+    bind('cfg_p_arth_min', parityCfg.ar_threshold_min, 0.70);
+    bind('cfg_p_arth_max', parityCfg.ar_threshold_max, 0.88);
+    bind('cfg_p_cooling', parityCfg.cooling_off_loss_limit, 2);
+    bind('cfg_p_winpause', parityCfg.win_streak_pause_limit, 2);
+
+    // Advanced Parity Bindings
+    bind('cfg_p_n_ratio', parityCfg.n_sliding_ratio, 0.20);
+    bind('cfg_p_ar_ratio', parityCfg.ar_window_ratio, 0.25);
+    bind('cfg_p_ar_mult', parityCfg.ar_threshold_multiplier, 0.85);
+    bind('cfg_p_rec_min', parityCfg.n_recent_min, 6);
+    bind('cfg_p_rec_max', parityCfg.n_recent_max, 14);
+    bind('cfg_p_rec_ratio', parityCfg.n_recent_ratio, 0.12);
+    bind('cfg_p_streak_conf', parityCfg.streak_confidence_threshold, 0.90);
+    bind('cfg_p_streak_samples', parityCfg.streak_min_samples, 3);
+    bind('cfg_p_streak_trap_mult', parityCfg.streak_safety_trap_multiplier, 1.5);
+    bind('cfg_p_streak_trap_min', parityCfg.streak_safety_trap_min, 4);
+    bind('cfg_p_sat_pct', parityCfg.saturation_percentile, 68);
+    bind('cfg_p_sat_min', parityCfg.saturation_limit_min, 0.52);
+    bind('cfg_p_sat_max', parityCfg.saturation_limit_max, 0.78);
+    bind('cfg_p_buy_mult', parityCfg.buy_threshold_multiplier, 0.45);
+    bind('cfg_p_ma50_win', parityCfg.ma50_window, 30);
+    bind('cfg_p_ma50_act', parityCfg.ma50_filter_active, false, true);
+    bind('cfg_p_wr_win', parityCfg.win_rate_filter_window, 10);
+    bind('cfg_p_wr_min_tot', parityCfg.win_rate_filter_min_total, 4);
+    bind('cfg_p_wr_th', parityCfg.win_rate_filter_threshold, 0.52);
+    bind('cfg_p_vol_penalty', parityCfg.volatility_penalty, 1.2);
+
+    // Size Form Bindings (33 fields)
+    bind('cfg_s_buy_min', sizeCfg.buy_threshold_min, 0.55);
+    bind('cfg_s_buy_max', sizeCfg.buy_threshold_max, 0.82);
+    bind('cfg_s_rev', sizeCfg.reversal_threshold, 0.85);
+    bind('cfg_s_n_min', sizeCfg.n_sliding_min, 12);
+    bind('cfg_s_n_max', sizeCfg.n_sliding_max, 20);
+    bind('cfg_s_ar_min', sizeCfg.ar_window_min, 10);
+    bind('cfg_s_ar_max', sizeCfg.ar_window_max, 30);
+    bind('cfg_s_arth_min', sizeCfg.ar_threshold_min, 0.70);
+    bind('cfg_s_arth_max', sizeCfg.ar_threshold_max, 0.88);
+    bind('cfg_s_cooling', sizeCfg.cooling_off_loss_limit, 2);
+    bind('cfg_s_winpause', sizeCfg.win_streak_pause_limit, 2);
+
+    // Advanced Size Bindings
+    bind('cfg_s_n_ratio', sizeCfg.n_sliding_ratio, 0.20);
+    bind('cfg_s_ar_ratio', sizeCfg.ar_window_ratio, 0.25);
+    bind('cfg_s_ar_mult', sizeCfg.ar_threshold_multiplier, 0.85);
+    bind('cfg_s_rec_min', sizeCfg.n_recent_min, 6);
+    bind('cfg_s_rec_max', sizeCfg.n_recent_max, 14);
+    bind('cfg_s_rec_ratio', sizeCfg.n_recent_ratio, 0.12);
+    bind('cfg_s_streak_conf', sizeCfg.streak_confidence_threshold, 0.90);
+    bind('cfg_s_streak_samples', sizeCfg.streak_min_samples, 3);
+    bind('cfg_s_streak_trap_mult', sizeCfg.streak_safety_trap_multiplier, 1.5);
+    bind('cfg_s_streak_trap_min', sizeCfg.streak_safety_trap_min, 4);
+    bind('cfg_s_sat_pct', sizeCfg.saturation_percentile, 68);
+    bind('cfg_s_sat_min', sizeCfg.saturation_limit_min, 0.52);
+    bind('cfg_s_sat_max', sizeCfg.saturation_limit_max, 0.78);
+    bind('cfg_s_buy_mult', sizeCfg.buy_threshold_multiplier, 0.45);
+    bind('cfg_s_ma50_win', sizeCfg.ma50_window, 30);
+    bind('cfg_s_ma50_act', sizeCfg.ma50_filter_active, false, true);
+    bind('cfg_s_wr_win', sizeCfg.win_rate_filter_window, 10);
+    bind('cfg_s_wr_min_tot', sizeCfg.win_rate_filter_min_total, 4);
+    bind('cfg_s_wr_th', sizeCfg.win_rate_filter_threshold, 0.52);
+    bind('cfg_s_vol_penalty', sizeCfg.volatility_penalty, 1.2);
+
+    if (document.getElementById('jsonSizeText')) {
+        document.getElementById('jsonSizeText').value = JSON.stringify(sizeCfg, null, 2);
+    }
+    updateAutoRetentionBadge();
+}
+
+function updateAutoRetentionBadge() {
+    const getValue = (id, defaultVal) => {
+        const el = document.getElementById(id);
+        if (!el) return defaultVal;
+        const val = parseInt(el.value);
+        return isNaN(val) ? defaultVal : val;
+    };
+
+    const p_n_max = getValue('cfg_p_n_max', 20);
+    const s_n_max = getValue('cfg_s_n_max', 20);
+    const p_ar_max = getValue('cfg_p_ar_max', 30);
+    const s_ar_max = getValue('cfg_s_ar_max', 30);
+    const p_wr_win = getValue('cfg_p_wr_win', 10) * 2;
+    const s_wr_win = getValue('cfg_s_wr_win', 10) * 2;
+    const p_ma = getValue('cfg_p_ma50_win', 30);
+    const s_ma = getValue('cfg_s_ma50_win', 30);
+    const p_rec = getValue('cfg_p_rec_max', 14);
+    const s_rec = getValue('cfg_s_rec_max', 14);
+
+    const maxWin = Math.max(p_n_max, s_n_max, p_ar_max, s_ar_max, p_wr_win, s_wr_win, p_ma, s_ma, p_rec, s_rec, 100);
+    const optimalLimit = Math.max(Math.floor(maxWin * 3.0), 300);
+
+    const badge = document.getElementById('autoRetentionBadge');
+    if (badge) {
+        badge.innerText = `⚡ Số Kỳ Tối Ưu WR: ${optimalLimit} Kỳ (Tự Động)`;
+    }
+}
+
+async function onPresetSelectionChanged() {
+    const selectEl = document.getElementById('dbPresetSelect');
+    if (!selectEl) return;
+    const name = selectEl.value;
+    try {
+        const res = await fetch(`/api/config/presets/${name}`);
+        if (res.ok) {
+            const data = await res.json();
+            populateFormInputsFromConfig(data.parity_config, data.size_config);
+        }
+    } catch (e) {
+        console.warn('Could not load preset details:', e);
+    }
+}
+
+
+function validateSingleConfig(cfg, label) {
+    if (!cfg) return null;
+    if (cfg.buy_threshold_min !== undefined && (cfg.buy_threshold_min < 0.40 || cfg.buy_threshold_min > 0.99))
+        return `Ngưỡng mua min (${label}) phải từ 0.40 đến 0.99!`;
+    if (cfg.buy_threshold_max !== undefined && cfg.buy_threshold_min !== undefined && cfg.buy_threshold_min > cfg.buy_threshold_max)
+        return `Ngưỡng mua min phải <= Ngưỡng mua max (${label})!`;
+    if (cfg.reversal_threshold !== undefined && (cfg.reversal_threshold < 0.50 || cfg.reversal_threshold > 0.99))
+        return `Ngưỡng đảo chiều (${label}) phải từ 0.50 đến 0.99!`;
+    if (cfg.n_sliding_min !== undefined && cfg.n_sliding_max !== undefined && cfg.n_sliding_min > cfg.n_sliding_max)
+        return `Cửa sổ trượt min phải <= Cửa sổ trượt max (${label})!`;
+    if (cfg.ar_window_min !== undefined && cfg.ar_window_max !== undefined && cfg.ar_window_min > cfg.ar_window_max)
+        return `Cửa sổ AR min phải <= Cửa sổ AR max (${label})!`;
+    if (cfg.ar_threshold_min !== undefined && cfg.ar_threshold_max !== undefined && cfg.ar_threshold_min > cfg.ar_threshold_max)
+        return `Ngưỡng AR min phải <= Ngưỡng AR max (${label})!`;
+    if (cfg.cooling_off_loss_limit !== undefined && cfg.cooling_off_loss_limit < 1)
+        return `Số kỳ tạm dừng khi thua (${label}) phải >= 1!`;
+    if (cfg.win_streak_pause_limit !== undefined && cfg.win_streak_pause_limit < 1)
+        return `Số kỳ tạm dừng khi thắng (${label}) phải >= 1!`;
+    if (cfg.n_recent_min !== undefined && cfg.n_recent_max !== undefined && cfg.n_recent_min > cfg.n_recent_max)
+        return `Cửa sổ gần đây min phải <= Cửa sổ gần đây max (${label})!`;
+    if (cfg.saturation_limit_min !== undefined && cfg.saturation_limit_max !== undefined && cfg.saturation_limit_min > cfg.saturation_limit_max)
+        return `Giới hạn bão hòa min phải <= Giới hạn bão hòa max (${label})!`;
+    return null;
+}
+
+async function saveConfigPresetToDb() {
+    let parityCfg = {};
+    let sizeCfg = {};
+
+    try {
+        if (document.getElementById('jsonParityText') && document.getElementById('jsonParityText').value.trim() !== '') {
+            parityCfg = JSON.parse(document.getElementById('jsonParityText').value);
+        }
+        if (document.getElementById('jsonSizeText') && document.getElementById('jsonSizeText').value.trim() !== '') {
+            sizeCfg = JSON.parse(document.getElementById('jsonSizeText').value);
+        }
+    } catch (err) {
+        showToast('Lỗi JSON', 'Lỗi định dạng JSON trong ô nhập mã thô! Vui lòng kiểm tra lại cú pháp JSON.', 'error');
+        return;
+    }
+
+    // Helper bind for inputs
+    const helperBind = (id, targetObj, key, type = 'float') => {
+        const el = document.getElementById(id);
+        if (el) {
+            if (type === 'bool') {
+                targetObj[key] = Boolean(el.checked);
+            } else if (el.value !== '') {
+                const val = type === 'int' ? parseInt(el.value) : parseFloat(el.value);
+                if (!isNaN(val)) targetObj[key] = val;
+            }
+        }
+    };
+
+    // Gather Parity (33 fields)
+    helperBind('cfg_p_buy_min', parityCfg, 'buy_threshold_min', 'float');
+    helperBind('cfg_p_buy_min', parityCfg, 'min_probability_threshold', 'float');
+    helperBind('cfg_p_buy_max', parityCfg, 'buy_threshold_max', 'float');
+    helperBind('cfg_p_rev', parityCfg, 'reversal_threshold', 'float');
+    helperBind('cfg_p_n_min', parityCfg, 'n_sliding_min', 'int');
+    helperBind('cfg_p_n_max', parityCfg, 'n_sliding_max', 'int');
+    helperBind('cfg_p_ar_min', parityCfg, 'ar_window_min', 'int');
+    helperBind('cfg_p_ar_max', parityCfg, 'ar_window_max', 'int');
+    helperBind('cfg_p_arth_min', parityCfg, 'ar_threshold_min', 'float');
+    helperBind('cfg_p_arth_max', parityCfg, 'ar_threshold_max', 'float');
+    helperBind('cfg_p_cooling', parityCfg, 'cooling_off_loss_limit', 'int');
+    helperBind('cfg_p_winpause', parityCfg, 'win_streak_pause_limit', 'int');
+
+    helperBind('cfg_p_n_ratio', parityCfg, 'n_sliding_ratio', 'float');
+    helperBind('cfg_p_ar_ratio', parityCfg, 'ar_window_ratio', 'float');
+    helperBind('cfg_p_ar_mult', parityCfg, 'ar_threshold_multiplier', 'float');
+    helperBind('cfg_p_rec_min', parityCfg, 'n_recent_min', 'int');
+    helperBind('cfg_p_rec_max', parityCfg, 'n_recent_max', 'int');
+    helperBind('cfg_p_rec_ratio', parityCfg, 'n_recent_ratio', 'float');
+    helperBind('cfg_p_streak_conf', parityCfg, 'streak_confidence_threshold', 'float');
+    helperBind('cfg_p_streak_samples', parityCfg, 'streak_min_samples', 'int');
+    helperBind('cfg_p_streak_trap_mult', parityCfg, 'streak_safety_trap_multiplier', 'float');
+    helperBind('cfg_p_streak_trap_min', parityCfg, 'streak_safety_trap_min', 'int');
+    helperBind('cfg_p_sat_pct', parityCfg, 'saturation_percentile', 'float');
+    helperBind('cfg_p_sat_min', parityCfg, 'saturation_limit_min', 'float');
+    helperBind('cfg_p_sat_max', parityCfg, 'saturation_limit_max', 'float');
+    helperBind('cfg_p_buy_mult', parityCfg, 'buy_threshold_multiplier', 'float');
+    helperBind('cfg_p_ma50_win', parityCfg, 'ma50_window', 'int');
+    helperBind('cfg_p_ma50_act', parityCfg, 'ma50_filter_active', 'bool');
+    helperBind('cfg_p_wr_win', parityCfg, 'win_rate_filter_window', 'int');
+    helperBind('cfg_p_wr_min_tot', parityCfg, 'win_rate_filter_min_total', 'int');
+    helperBind('cfg_p_wr_th', parityCfg, 'win_rate_filter_threshold', 'float');
+    helperBind('cfg_p_vol_penalty', parityCfg, 'volatility_penalty', 'float');
+
+    // Gather Size (33 fields)
+    helperBind('cfg_s_buy_min', sizeCfg, 'buy_threshold_min', 'float');
+    helperBind('cfg_s_buy_min', sizeCfg, 'min_probability_threshold', 'float');
+    helperBind('cfg_s_buy_max', sizeCfg, 'buy_threshold_max', 'float');
+    helperBind('cfg_s_rev', sizeCfg, 'reversal_threshold', 'float');
+    helperBind('cfg_s_n_min', sizeCfg, 'n_sliding_min', 'int');
+    helperBind('cfg_s_n_max', sizeCfg, 'n_sliding_max', 'int');
+    helperBind('cfg_s_ar_min', sizeCfg, 'ar_window_min', 'int');
+    helperBind('cfg_s_ar_max', sizeCfg, 'ar_window_max', 'int');
+    helperBind('cfg_s_arth_min', sizeCfg, 'ar_threshold_min', 'float');
+    helperBind('cfg_s_arth_max', sizeCfg, 'ar_threshold_max', 'float');
+    helperBind('cfg_s_cooling', sizeCfg, 'cooling_off_loss_limit', 'int');
+    helperBind('cfg_s_winpause', sizeCfg, 'win_streak_pause_limit', 'int');
+
+    helperBind('cfg_s_n_ratio', sizeCfg, 'n_sliding_ratio', 'float');
+    helperBind('cfg_s_ar_ratio', sizeCfg, 'ar_window_ratio', 'float');
+    helperBind('cfg_s_ar_mult', sizeCfg, 'ar_threshold_multiplier', 'float');
+    helperBind('cfg_s_rec_min', sizeCfg, 'n_recent_min', 'int');
+    helperBind('cfg_s_rec_max', sizeCfg, 'n_recent_max', 'int');
+    helperBind('cfg_s_rec_ratio', sizeCfg, 'n_recent_ratio', 'float');
+    helperBind('cfg_s_streak_conf', sizeCfg, 'streak_confidence_threshold', 'float');
+    helperBind('cfg_s_streak_samples', sizeCfg, 'streak_min_samples', 'int');
+    helperBind('cfg_s_streak_trap_mult', sizeCfg, 'streak_safety_trap_multiplier', 'float');
+    helperBind('cfg_s_streak_trap_min', sizeCfg, 'streak_safety_trap_min', 'int');
+    helperBind('cfg_s_sat_pct', sizeCfg, 'saturation_percentile', 'float');
+    helperBind('cfg_s_sat_min', sizeCfg, 'saturation_limit_min', 'float');
+    helperBind('cfg_s_sat_max', sizeCfg, 'saturation_limit_max', 'float');
+    helperBind('cfg_s_buy_mult', sizeCfg, 'buy_threshold_multiplier', 'float');
+    helperBind('cfg_s_ma50_win', sizeCfg, 'ma50_window', 'int');
+    helperBind('cfg_s_ma50_act', sizeCfg, 'ma50_filter_active', 'bool');
+    helperBind('cfg_s_wr_win', sizeCfg, 'win_rate_filter_window', 'int');
+    helperBind('cfg_s_wr_min_tot', sizeCfg, 'win_rate_filter_min_total', 'int');
+    helperBind('cfg_s_wr_th', sizeCfg, 'win_rate_filter_threshold', 'float');
+    helperBind('cfg_s_vol_penalty', sizeCfg, 'volatility_penalty', 'float');
+
+    // Run Validation
+    const errP = validateSingleConfig(parityCfg, 'Kèo Parity');
+    if (errP) {
+        showToast('Cảnh Báo Dữ Liệu', errP, 'warning');
+        return;
+    }
+    const errS = validateSingleConfig(sizeCfg, 'Kèo Size');
+    if (errS) {
+        showToast('Cảnh Báo Dữ Liệu', errS, 'warning');
+        return;
+    }
+    try {
+
+        const currentPresetName = document.getElementById('dbPresetSelect') ? document.getElementById('dbPresetSelect').value : 'standard';
+        const res = await fetch('/api/config/save-preset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                preset_name: currentPresetName,
+                parity_config: parityCfg,
+                size_config: sizeCfg
+            })
+        });
+        const result = await res.json();
+        if (res.ok && result.status === 'success') {
+            showToast('Thành Công', `Đã cập nhật vĩnh viễn bộ tham số '${currentPresetName}' vào Database thành công!`, 'success');
+            fetchAndRenderSidebarConfig();
+            loadAllPresetsFromDb();
+        } else {
+            showToast('Lỗi CSDL', 'Lỗi lưu CSDL: ' + (result.detail || result.message), 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi Kết Nối', 'Không thể kết nối API lưu CSDL: ' + e, 'error');
+    }
+}
+
+async function loadAllPresetsFromDb() {
+    try {
+        const res = await fetch('/api/config/presets');
+        if (res.ok) {
+            const data = await res.json();
+            const presets = data.presets || [];
+            const selectEl = document.getElementById('dbPresetSelect');
+            if (selectEl) {
+                const curVal = selectEl.value;
+                selectEl.innerHTML = '';
+                presets.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.name;
+                    opt.innerText = p.name + (p.is_active ? ' (Đang chạy)' : '');
+                    if (p.is_active && !curVal) opt.selected = true;
+                    if (p.name === curVal) opt.selected = true;
+                    selectEl.appendChild(opt);
+                });
+            }
+        }
+    } catch (e) {
+        console.warn('Could not load presets list:', e);
+    }
+}
+
+async function activateSelectedPresetDb() {
+    const selectEl = document.getElementById('dbPresetSelect');
+    if (!selectEl) return;
+    const name = selectEl.value;
+    try {
+        const res = await fetch(`/api/config/presets/${name}/activate`, { method: 'POST' });
+        const result = await res.json();
+        if (res.ok && result.status === 'success') {
+            showToast('Thành Công', result.message, 'success');
+            fetchAndRenderSidebarConfig();
+            loadAllPresetsFromDb();
+        } else {
+            showToast('Lỗi', 'Lỗi kích hoạt: ' + result.detail, 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi API', 'Lỗi kết nối API: ' + e, 'error');
+    }
+}
+
+async function promptCreateNewPreset() {
+    const name = prompt('Nhập tên Bộ Tham Số Mới muốn tạo (Ví dụ: bang_thang_7, an_toan, aggressive):');
+    if (!name || name.trim() === '') return;
+    const cleanName = name.trim().toLowerCase().replace(/\s+/g, '_');
+
+    // Create new option in select and save
+    const selectEl = document.getElementById('dbPresetSelect');
+    if (selectEl) {
+        const opt = document.createElement('option');
+        opt.value = cleanName;
+        opt.innerText = cleanName + ' (Mới)';
+        opt.selected = true;
+        selectEl.appendChild(opt);
+    }
+    await saveConfigPresetToDb();
+}
+
+async function deleteSelectedPresetDb() {
+    const selectEl = document.getElementById('dbPresetSelect');
+    if (!selectEl) return;
+    const name = selectEl.value;
+    if (name === 'standard' || name === 'default') {
+        showToast('Cảnh Báo', 'Không thể xóa bộ tham số mặc định (standard)!', 'warning');
+        return;
+    }
+    if (!await showConfirmModal('Xóa Bộ Tham Số', `Bạn có chắc chắn muốn XÓA BỘ THAM SỐ '${name}' khỏi Cơ sở dữ liệu CSDL?`)) return;
+
+    try {
+        const res = await fetch(`/api/config/presets/${name}`, { method: 'DELETE' });
+        const result = await res.json();
+        if (res.ok && result.status === 'success') {
+            showToast('Thành Công', result.message, 'success');
+            loadAllPresetsFromDb();
+            fetchAndRenderSidebarConfig();
+        } else {
+            showToast('Lỗi', 'Lỗi xóa: ' + result.detail, 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi API', 'Lỗi kết nối API xóa: ' + e, 'error');
+    }
+}
+
+
+// Fetch and render Golden Hour & Market Health Analytics
+let lastAutoPauseToastTime = 0;
+
+async function fetchAndRenderMarketHealthAnalytics() {
+    try {
+        const res = await fetch('/api/market-health/analytics?t=' + Date.now());
+        const result = await res.json();
+        if (result.status === 'success' && result.data) {
+            const d = result.data;
+
+            // Render Golden Hour Badge
+            const goldenBadge = document.getElementById('goldenHourBadge');
+            if (goldenBadge) {
+                const wrVal = d.golden_window_wr || 55.0;
+                goldenBadge.innerText = `${d.golden_window || 'Chiều (14:00 - 18:00)'} - ${wrVal}% WR`;
+            }
+
+            // Render Time Window Win Rates
+            const stats = d.time_window_stats || {};
+            const elMorning = document.getElementById('twMorningWr');
+            const elNoon = document.getElementById('twNoonWr');
+            const elAfternoon = document.getElementById('twAfternoonWr');
+            const elEvening = document.getElementById('twEveningWr');
+
+            if (elMorning) elMorning.innerText = stats['Sáng (08:00 - 12:00)'] !== undefined ? `${stats['Sáng (08:00 - 12:00)']}%` : '-';
+            if (elNoon) elNoon.innerText = stats['Trưa (12:00 - 14:00)'] !== undefined ? `${stats['Trưa (12:00 - 14:00)']}%` : '-';
+            if (elAfternoon) elAfternoon.innerText = stats['Chiều (14:00 - 18:00)'] !== undefined ? `${stats['Chiều (14:00 - 18:00)']}%` : '-';
+            if (elEvening) elEvening.innerText = stats['Tối (18:00 - 23:00)'] !== undefined ? `${stats['Tối (18:00 - 23:00)']}%` : '-';
+
+            // Auto-Pause Guard warning badge & Toast
+            const pauseBadge = document.getElementById('marketHealthPauseBadge');
+            if (d.requires_pause) {
+                if (pauseBadge) pauseBadge.style.display = 'inline-block';
+
+                // Throttle Toast notification once every 3 minutes (180,000 ms)
+                const now = Date.now();
+                if (now - lastAutoPauseToastTime > 180000) {
+                    showToast('CẢNH BÁO BẢO TOÀN VỐN', d.recommendation || 'Thị trường đang hỗn loạn (Win Rate < 48%). Khuyên dùng: Tạm ngưng cược!', 'error');
+                    lastAutoPauseToastTime = now;
+                }
+            } else {
+                if (pauseBadge) pauseBadge.style.display = 'none';
+            }
+        }
+    } catch (e) {
+        console.error("Lỗi khi tải Market Health Analytics:", e);
+    }
+}
+
+// Auto load presets list on page init
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(loadAllPresetsFromDb, 1000);
+    setTimeout(fetchAndRenderMarketHealthAnalytics, 1500);
+
+    // Attach real-time input listeners to recalculate retention limit
+    const retentionInputIds = [
+        'cfg_p_n_max', 'cfg_s_n_max',
+        'cfg_p_ar_max', 'cfg_s_ar_max',
+        'cfg_p_wr_win', 'cfg_s_wr_win',
+        'cfg_p_ma50_win', 'cfg_s_ma50_win',
+        'cfg_p_rec_max', 'cfg_s_rec_max'
+    ];
+    retentionInputIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', updateAutoRetentionBadge);
+        }
+    });
+});
+
