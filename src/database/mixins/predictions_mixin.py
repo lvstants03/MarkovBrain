@@ -3,6 +3,7 @@ import time
 import logging
 import os
 from typing import List, Dict, Any, Optional
+from src.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ class PredictionsMixin:
                     added = True
 
         if added:
+            self._persist_prediction_to_db(record)
             bet_amt = self.get_balances()["demo_bet_amount"]
             pred_p = record.get("predicted_parity")
             if pred_p and pred_p != "Không có":
@@ -84,6 +86,37 @@ class PredictionsMixin:
                 )
 
         return added
+
+    def _persist_prediction_to_db(self, record: dict) -> None:
+        """Ghi moi du doan vao bang predictions trong CSDL (Dual-Write)."""
+        try:
+            from src.database.connection import get_db_session
+            from src.database.models.prediction import Prediction
+            issue = record.get("issue")
+            with get_db_session() as session:
+                existing = session.query(Prediction).filter_by(
+                    lottery_code=config.LOTTERY_CODE,
+                    issue=issue
+                ).first()
+                if not existing:
+                    db_pred = Prediction(
+                        lottery_code=config.LOTTERY_CODE,
+                        issue=issue,
+                        predicted_parity=record.get("predicted_parity", "Không có"),
+                        predicted_size=record.get("predicted_size", "Không có"),
+                        parity_confidence=record.get("parity_confidence"),
+                        size_confidence=record.get("size_confidence"),
+                        engine_used_parity=record.get("engine_used_parity", "Heuristics"),
+                        engine_used_size=record.get("engine_used_size", "Heuristics"),
+                        parity_rationale=record.get("parity_rationale", ""),
+                        size_rationale=record.get("size_rationale", ""),
+                        status_parity="pending",
+                        status_size="pending",
+                    )
+                    session.add(db_pred)
+                    logger.info(f"[DB] Saved prediction: {issue}")
+        except Exception as ex:
+            logger.warning(f"[DB] prediction persist warning ({record.get('issue')}): {ex}")
 
     def resolve_prediction(self, issue: str, numbers: List[int]) -> bool:
         if not issue or not numbers or len(numbers) != 5:
@@ -142,11 +175,39 @@ class PredictionsMixin:
 
         if updated:
             self.resolve_demo_bets(issue, numbers)
+            self._update_prediction_in_db(issue, actual_parity, actual_size)
             try:
                 self.write_market_health_log()
             except Exception as e:
                 logger.error(f"Error writing market health log: {e}")
         return updated
+
+    def _update_prediction_in_db(self, issue: str, actual_parity: str, actual_size: str) -> None:
+        """Cap nhat trang thai thuc te (actual/status) vao bang predictions trong CSDL."""
+        try:
+            from src.database.connection import get_db_session
+            from src.database.models.prediction import Prediction
+            with get_db_session() as session:
+                db_pred = session.query(Prediction).filter_by(
+                    lottery_code=config.LOTTERY_CODE,
+                    issue=issue
+                ).first()
+                if db_pred and db_pred.status_parity == "pending":
+                    db_pred.actual_parity = actual_parity
+                    db_pred.actual_size = actual_size
+                    pred_p = db_pred.predicted_parity
+                    pred_s = db_pred.predicted_size
+                    if pred_p and pred_p not in ("Không có", "Khong co"):
+                        db_pred.status_parity = "win" if pred_p == actual_parity else "lose"
+                    else:
+                        db_pred.status_parity = "ignored"
+                    if pred_s and pred_s not in ("Không có", "Khong co"):
+                        db_pred.status_size = "win" if pred_s == actual_size else "lose"
+                    else:
+                        db_pred.status_size = "ignored"
+                    logger.info(f"[DB] Resolved prediction: {issue} parity={db_pred.status_parity} size={db_pred.status_size}")
+        except Exception as ex:
+            logger.warning(f"[DB] prediction resolve warning ({issue}): {ex}")
 
     def get_prediction(self, issue: str) -> Optional[Dict[str, Any]]:
         if self.use_redis:
@@ -180,11 +241,39 @@ class PredictionsMixin:
                 logger.error(f"Redis error in get_prediction_history: {e}")
 
         with self._lock:
-            if not hasattr(self, "_predictions"):
-                return []
-            preds = list(self._predictions.values())
+            preds = list(self._predictions.values()) if hasattr(self, "_predictions") else []
+            if not preds:
+                try:
+                    from src.database.connection import get_db_session
+                    from src.database.models import Prediction
+                    with get_db_session() as session:
+                        rows = session.query(Prediction).filter_by(
+                            lottery_code=config.LOTTERY_CODE
+                        ).order_by(Prediction.issue.desc()).limit(limit).all()
+                        db_preds = []
+                        for r in rows:
+                            db_preds.append({
+                                "issue": r.issue,
+                                "predicted_parity": r.predicted_parity,
+                                "predicted_size": r.predicted_size,
+                                "parity_confidence": r.parity_confidence,
+                                "size_confidence": r.size_confidence,
+                                "actual_parity": r.actual_parity,
+                                "actual_size": r.actual_size,
+                                "status_parity": r.status_parity,
+                                "status_size": r.status_size,
+                                "engine_used_parity": r.engine_used_parity,
+                                "engine_used_size": r.engine_used_size,
+                                "parity_rationale": r.parity_rationale,
+                                "size_rationale": r.size_rationale,
+                                "time": r.created_at.strftime("%H:%M:%S %d/%m/%Y") if r.created_at else "-"
+                            })
+                        return db_preds
+                except Exception as ex:
+                    logger.warning(f"[DB] get_prediction_history fallback error: {ex}")
             preds.sort(key=lambda x: x["issue"], reverse=True)
             return preds[:limit]
+
 
     def get_prediction_stats(self) -> dict:
         history = self.get_prediction_history(limit=1000)
@@ -398,6 +487,33 @@ class PredictionsMixin:
             table_content = "\n".join(existing_rows[-100:]) + "\n"
             with open(log_file_path, "w", encoding="utf-8") as f:
                 f.write(header + table_content)
+
+            # Persist to Database table: market_health_logs
+            if total_bets > 0:
+                try:
+                    from src.database.connection import get_db_session
+                    from src.database.models.system import MarketHealthLog
+                    with get_db_session() as session:
+                        existing = session.query(MarketHealthLog).filter(
+                            MarketHealthLog.lottery_code == config.LOTTERY_CODE,
+                            MarketHealthLog.issue_range == issue_range
+                        ).first()
+                        if not existing:
+                            clamped_wr = max(0.0, min(100.0, round(win_rate_pct, 2)))
+                            db_log = MarketHealthLog(
+                                lottery_code=config.LOTTERY_CODE,
+                                issue_range=issue_range,
+                                total_bets=total_bets,
+                                win_count=wins,
+                                win_rate_pct=clamped_wr,
+                                status=status
+                            )
+                            session.add(db_log)
+                            session.commit()
+                            logger.info(f"[DB] MarketHealth saved & committed: {issue_range} - WR: {clamped_wr:.1f}% ({status})")
+                except Exception as ex:
+                    logger.warning(f"[DB] MarketHealth save warning: {ex}")
+
 
     # ============================ SOCKET LOGS ============================
 

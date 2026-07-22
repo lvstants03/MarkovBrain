@@ -321,6 +321,33 @@
                     <!-- Sliding Blocks -->
                     <div class="card">
                         <div class="card-title">Báo Cáo Sức Khỏe Thị Trường (30 Kỳ)</div>
+                        
+                        <!-- Golden Hour & Time Window Analytics Widget -->
+                        <div id="goldenHourWidget" style="margin-bottom: 1rem; padding: 0.75rem 1rem; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.3rem;">
+                                <span style="font-weight: 600; font-size: 0.88rem; color: #f8fafc;">Khung Giờ Vàng: <span id="goldenHourBadge" class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); margin-left: 0.3rem;">Chiều (14:00 - 18:00)</span></span>
+                                <span id="marketHealthPauseBadge" class="badge" style="display: none; background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">CẢNH BÁO BẢO TOÀN VỐN</span>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; text-align: center; font-size: 0.8rem;">
+                                <div style="background: rgba(15, 23, 42, 0.6); padding: 0.4rem; border-radius: 6px;">
+                                    <div style="color: var(--text-muted); font-size: 0.73rem;">Sáng (08-12h)</div>
+                                    <div id="twMorningWr" style="font-weight: 700; color: #cbd5e1;">-</div>
+                                </div>
+                                <div style="background: rgba(15, 23, 42, 0.6); padding: 0.4rem; border-radius: 6px;">
+                                    <div style="color: var(--text-muted); font-size: 0.73rem;">Trưa (12-14h)</div>
+                                    <div id="twNoonWr" style="font-weight: 700; color: #cbd5e1;">-</div>
+                                </div>
+                                <div style="background: rgba(15, 23, 42, 0.6); padding: 0.4rem; border-radius: 6px;">
+                                    <div style="color: var(--text-muted); font-size: 0.73rem;">Chiều (14-18h)</div>
+                                    <div id="twAfternoonWr" style="font-weight: 700; color: #cbd5e1;">-</div>
+                                </div>
+                                <div style="background: rgba(15, 23, 42, 0.6); padding: 0.4rem; border-radius: 6px;">
+                                    <div style="color: var(--text-muted); font-size: 0.73rem;">Tối (18-23h)</div>
+                                    <div id="twEveningWr" style="font-weight: 700; color: #cbd5e1;">-</div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; font-size: 0.95rem; font-weight: 500;">
                             <span>Khối 30 kỳ gần nhất: <span id="latestBlockStatus" style="color: var(--success);">-</span></span>
                             <span>Hiệu suất thắng: <span id="latestBlockWinRate" style="color: var(--primary);">-</span></span>
@@ -600,40 +627,53 @@
 
             <!-- TAB 4: THAM SỐ & CẤU HÌNH CSDL -->
             <div id="configTab" class="tab-panel">
-                <div class="card" style="margin-bottom: 1.5rem; border-left: 4px solid var(--primary);">
+                <!-- Unified Presets CRUD Toolbar Card -->
+                <div class="card" style="margin-bottom: 1.5rem; background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(15, 23, 42, 0.8) 100%); border: 1px solid rgba(99, 102, 241, 0.3); border-left: 4px solid var(--primary);">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
                         <div>
-                            <h3 style="margin: 0; font-size: 1.15rem; color: #a5b4fc;">Quản Lý Bộ Tham Số Thuật Toán & CSDL</h3>
-                            <div style="font-size: 0.83rem; color: var(--text-muted); margin-top: 0.2rem;">
-                                Cho phép tùy chỉnh, lưu nhiều bản ghi Cấu Hình Presets vào Database và áp dụng trực tiếp cho Bot.
+                            <div style="display: flex; align-items: center; gap: 0.6rem;">
+                                <h3 style="margin: 0; font-size: 1.15rem; color: #a5b4fc;">Quản Lý Bộ Tham Số Thuật Toán & CSDL</h3>
+                                <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 0.2rem 0.6rem; font-size: 0.75rem; font-weight: 700;">
+                                    CSDL PostgreSQL
+                                </span>
+                                <span id="autoRetentionBadge" class="badge" style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.4); padding: 0.2rem 0.6rem; font-size: 0.75rem; font-weight: 700;">
+                                    ⚡ Số Kỳ Tối Ưu WR: 300 Kỳ (Tự Động)
+                                </span>
+
+                            </div>
+                            <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0.25rem;">
+                                Tùy chỉnh, tạo nhiều bản ghi Cấu Hình Presets và áp dụng trực tiếp cho Bot.
                             </div>
                         </div>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <button class="btn btn-secondary" onclick="fetchAndRenderSidebarConfig()" style="font-size: 0.8rem;">Tải Lại Từ DB</button>
-                            <button class="btn btn-primary" onclick="saveConfigPresetToDb()" style="font-size: 0.8rem; font-weight: 600;">Lưu CSDL & Kích Hoạt</button>
+                        
+                        <!-- Toolbar Controls Group -->
+                        <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                            <div style="display: flex; align-items: center; gap: 0.35rem; background: rgba(15, 23, 42, 0.6); padding: 0.25rem 0.5rem; border-radius: 6px; border: 1px solid var(--border-card);">
+                                <label for="dbPresetSelect" style="font-size: 0.8rem; color: var(--text-muted); margin: 0; font-weight: 600;">Bộ Cấu Hình:</label>
+                                <select id="dbPresetSelect" class="form-select" onchange="onPresetSelectionChanged()" style="max-width: 200px; font-weight: 600; padding: 0.3rem 0.5rem; font-size: 0.83rem; background: #0f172a; color: #fff; border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 4px;">
+                                    <option value="standard" selected>standard (Mặc Định)</option>
+                                </select>
+                            </div>
+
+                            <button class="btn btn-primary" onclick="saveConfigPresetToDb()" style="font-size: 0.8rem; font-weight: 600; padding: 0.4rem 0.8rem;" title="Lưu lại tất cả tham số hiện tại vào bộ Preset đang chọn">
+                                💾 Lưu CSDL
+                            </button>
+                            <button class="btn btn-secondary" onclick="activateSelectedPresetDb()" style="font-size: 0.8rem; font-weight: 600; padding: 0.4rem 0.8rem; background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);" title="Kích hoạt bộ cấu hình này làm mặc định cho Bot">
+                                🚀 Kích Hoạt
+                            </button>
+                            <button class="btn btn-secondary" onclick="promptCreateNewPreset()" style="font-size: 0.8rem; padding: 0.4rem 0.7rem; background: rgba(99, 102, 241, 0.15); color: #818cf8; border-color: rgba(99, 102, 241, 0.3);" title="Tạo bộ tham số mới">
+                                ➕ Tạo Mới
+                            </button>
+                            <button class="btn btn-secondary" onclick="deleteSelectedPresetDb()" style="font-size: 0.8rem; padding: 0.4rem 0.7rem; background: rgba(239, 68, 68, 0.15); color: #f87171; border-color: rgba(239, 68, 68, 0.3);" title="Xóa bộ tham số đang chọn">
+                                🗑️ Xóa
+                            </button>
+                            <button class="btn btn-secondary" onclick="fetchAndRenderSidebarConfig()" style="font-size: 0.8rem; padding: 0.4rem 0.6rem;" title="Nạp lại từ Database">
+                                🔄 Tải Lại
+                            </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Single Standard Config DB Banner & Presets CRUD -->
-                <div class="card" style="margin-bottom: 1.5rem; background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(15, 23, 42, 0.5) 100%); border: 1px solid rgba(99, 102, 241, 0.25);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-                        <div style="display: flex; align-items: center; gap: 0.75rem;">
-                            <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 0.4rem 0.8rem; font-size: 0.82rem; font-weight: 700;">
-                                CSDL POSTGRESQL READ/WRITE
-                            </span>
-                            <span style="font-size: 0.85rem; color: var(--text-muted);">Quản lý tất cả các bản ghi cấu hình trong CSDL (Thêm, Xóa, Kích Hoạt).</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <select id="dbPresetSelect" class="form-select" style="max-width: 220px; font-weight: 600; padding: 0.35rem 0.6rem; font-size: 0.83rem;">
-                                <option value="standard" selected>standard (Mặc Định)</option>
-                            </select>
-                            <button class="btn btn-secondary" onclick="activateSelectedPresetDb()" style="font-size: 0.78rem; padding: 0.35rem 0.6rem;">Kích Hoạt</button>
-                            <button class="btn btn-secondary" onclick="promptCreateNewPreset()" style="font-size: 0.78rem; padding: 0.35rem 0.6rem; background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.3);">+ Tạo Mới</button>
-                            <button class="btn btn-secondary" onclick="deleteSelectedPresetDb()" style="font-size: 0.78rem; padding: 0.35rem 0.6rem; background: rgba(239, 68, 68, 0.15); color: #f87171; border-color: rgba(239, 68, 68, 0.3);">Xóa Bộ Này</button>
-                        </div>
-                    </div>
-                </div>
 
                 <!-- Parameters Form Grid -->
                 <div class="grid-2">
@@ -682,6 +722,80 @@
                                 <label style="font-size: 0.82rem; color: var(--text-muted);">Chốt lời tạm dừng sau khi thắng (win_streak_pause_limit):</label>
                                 <input type="number" id="cfg_p_winpause" class="form-input" value="2" style="padding: 0.4rem 0.6rem; font-size: 0.85rem; background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border-card); border-radius: 4px; color: #fff;">
                             </div>
+
+                            <!-- Advanced Parity Parameters Collapsible -->
+                            <details style="margin-top: 0.5rem; background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border-card); border-radius: 6px; padding: 0.6rem;">
+                                <summary style="font-size: 0.85rem; font-weight: 600; color: #818cf8; cursor: pointer;">⚙️ Tham Số Nâng Cao (Parity - 21 Cột CSDL Bổ Sung)</summary>
+                                <div style="display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.75rem;">
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Tỷ lệ Cửa sổ trượt (n_sliding_ratio):</label>
+                                        <input type="number" step="0.01" id="cfg_p_n_ratio" class="form-input" value="0.20" style="padding: 0.35rem 0.5rem; font-size: 0.82rem; background: #0f172a; border: 1px solid var(--border-card); border-radius: 4px; color: #fff;">
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Tỷ lệ Cửa sổ AR (ar_window_ratio):</label>
+                                        <input type="number" step="0.01" id="cfg_p_ar_ratio" class="form-input" value="0.25" style="padding: 0.35rem 0.5rem; font-size: 0.82rem; background: #0f172a; border: 1px solid var(--border-card); border-radius: 4px; color: #fff;">
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Hệ số Ngưỡng AR (ar_threshold_multiplier):</label>
+                                        <input type="number" step="0.01" id="cfg_p_ar_mult" class="form-input" value="0.85" style="padding: 0.35rem 0.5rem; font-size: 0.82rem; background: #0f172a; border: 1px solid var(--border-card); border-radius: 4px; color: #fff;">
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Cửa sổ gần đây (n_recent_min / max / ratio):</label>
+                                        <div style="display: flex; gap: 0.4rem;">
+                                            <input type="number" id="cfg_p_rec_min" class="form-input" value="6" placeholder="Min" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" id="cfg_p_rec_max" class="form-input" value="14" placeholder="Max" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" step="0.01" id="cfg_p_rec_ratio" class="form-input" value="0.12" placeholder="Ratio" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Ngưỡng tin cậy & số mẫu chuỗi thắng (streak_confidence / min_samples):</label>
+                                        <div style="display: flex; gap: 0.4rem;">
+                                            <input type="number" step="0.01" id="cfg_p_streak_conf" class="form-input" value="0.90" placeholder="Conf" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" id="cfg_p_streak_samples" class="form-input" value="3" placeholder="Samples" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Bẫy an toàn chuỗi (streak_safety_trap_multiplier / min):</label>
+                                        <div style="display: flex; gap: 0.4rem;">
+                                            <input type="number" step="0.1" id="cfg_p_streak_trap_mult" class="form-input" value="1.5" placeholder="Mult" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" id="cfg_p_streak_trap_min" class="form-input" value="4" placeholder="Min" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Ngưỡng bão hòa (saturation percentile / limit min / max):</label>
+                                        <div style="display: flex; gap: 0.4rem;">
+                                            <input type="number" step="1" id="cfg_p_sat_pct" class="form-input" value="68" placeholder="Percentile" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" step="0.01" id="cfg_p_sat_min" class="form-input" value="0.52" placeholder="Min" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" step="0.01" id="cfg_p_sat_max" class="form-input" value="0.78" placeholder="Max" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Hệ số Ngưỡng Mua (buy_threshold_multiplier):</label>
+                                        <input type="number" step="0.01" id="cfg_p_buy_mult" class="form-input" value="0.45" style="padding: 0.35rem 0.5rem; font-size: 0.82rem; background: #0f172a; border: 1px solid var(--border-card); border-radius: 4px; color: #fff;">
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Bộ lọc MA50 (ma50_window / filter_active):</label>
+                                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                            <input type="number" id="cfg_p_ma50_win" class="form-input" value="30" placeholder="Window" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <label style="font-size: 0.8rem; color: #fff; cursor: pointer;">
+                                                <input type="checkbox" id="cfg_p_ma50_act"> Bật MA50
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Bộ lọc Win Rate (window / min_total / threshold):</label>
+                                        <div style="display: flex; gap: 0.4rem;">
+                                            <input type="number" id="cfg_p_wr_win" class="form-input" value="10" placeholder="Window" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" id="cfg_p_wr_min_tot" class="form-input" value="4" placeholder="Min Total" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" step="0.01" id="cfg_p_wr_th" class="form-input" value="0.52" placeholder="Threshold" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Hình phạt biến động (volatility_penalty):</label>
+                                        <input type="number" step="0.1" id="cfg_p_vol_penalty" class="form-input" value="1.2" style="padding: 0.35rem 0.5rem; font-size: 0.82rem; background: #0f172a; border: 1px solid var(--border-card); border-radius: 4px; color: #fff;">
+                                    </div>
+                                </div>
+                            </details>
                         </div>
                     </div>
 
@@ -726,6 +840,87 @@
                                 <label style="font-size: 0.82rem; color: var(--text-muted);">Tạm dừng sau khi thua (cooling_off_loss_limit):</label>
                                 <input type="number" id="cfg_s_cooling" class="form-input" value="2" style="padding: 0.4rem 0.6rem; font-size: 0.85rem; background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border-card); border-radius: 4px; color: #fff;">
                             </div>
+                            <div class="form-group">
+                                <label style="font-size: 0.82rem; color: var(--text-muted);">Chốt lời tạm dừng sau khi thắng (win_streak_pause_limit):</label>
+                                <input type="number" id="cfg_s_winpause" class="form-input" value="2" style="padding: 0.4rem 0.6rem; font-size: 0.85rem; background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border-card); border-radius: 4px; color: #fff;">
+                            </div>
+
+                            <!-- Advanced Size Parameters Collapsible -->
+                            <details style="margin-top: 0.5rem; background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border-card); border-radius: 6px; padding: 0.6rem;">
+                                <summary style="font-size: 0.85rem; font-weight: 600; color: #fbbf24; cursor: pointer;">⚙️ Tham Số Nâng Cao (Size - 21 Cột CSDL Bổ Sung)</summary>
+                                <div style="display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.75rem;">
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Tỷ lệ Cửa sổ trượt (n_sliding_ratio):</label>
+                                        <input type="number" step="0.01" id="cfg_s_n_ratio" class="form-input" value="0.20" style="padding: 0.35rem 0.5rem; font-size: 0.82rem; background: #0f172a; border: 1px solid var(--border-card); border-radius: 4px; color: #fff;">
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Tỷ lệ Cửa sổ AR (ar_window_ratio):</label>
+                                        <input type="number" step="0.01" id="cfg_s_ar_ratio" class="form-input" value="0.25" style="padding: 0.35rem 0.5rem; font-size: 0.82rem; background: #0f172a; border: 1px solid var(--border-card); border-radius: 4px; color: #fff;">
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Hệ số Ngưỡng AR (ar_threshold_multiplier):</label>
+                                        <input type="number" step="0.01" id="cfg_s_ar_mult" class="form-input" value="0.85" style="padding: 0.35rem 0.5rem; font-size: 0.82rem; background: #0f172a; border: 1px solid var(--border-card); border-radius: 4px; color: #fff;">
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Cửa sổ gần đây (n_recent_min / max / ratio):</label>
+                                        <div style="display: flex; gap: 0.4rem;">
+                                            <input type="number" id="cfg_s_rec_min" class="form-input" value="6" placeholder="Min" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" id="cfg_s_rec_max" class="form-input" value="14" placeholder="Max" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" step="0.01" id="cfg_s_rec_ratio" class="form-input" value="0.12" placeholder="Ratio" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Ngưỡng tin cậy & số mẫu chuỗi thắng (streak_confidence / min_samples):</label>
+                                        <div style="display: flex; gap: 0.4rem;">
+                                            <input type="number" step="0.01" id="cfg_s_streak_conf" class="form-input" value="0.90" placeholder="Conf" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" id="cfg_s_streak_samples" class="form-input" value="3" placeholder="Samples" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Bẫy an toàn chuỗi (streak_safety_trap_multiplier / min):</label>
+                                        <div style="display: flex; gap: 0.4rem;">
+                                            <input type="number" step="0.1" id="cfg_s_streak_trap_mult" class="form-input" value="1.5" placeholder="Mult" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" id="cfg_s_streak_trap_min" class="form-input" value="4" placeholder="Min" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Ngưỡng bão hòa (saturation percentile / limit min / max):</label>
+                                        <div style="display: flex; gap: 0.4rem;">
+                                            <input type="number" step="1" id="cfg_s_sat_pct" class="form-input" value="68" placeholder="Percentile" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" step="0.01" id="cfg_s_sat_min" class="form-input" value="0.52" placeholder="Min" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" step="0.01" id="cfg_s_sat_max" class="form-input" value="0.78" placeholder="Max" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Hệ số Ngưỡng Mua (buy_threshold_multiplier):</label>
+                                        <input type="number" step="0.01" id="cfg_s_buy_mult" class="form-input" value="0.45" style="padding: 0.35rem 0.5rem; font-size: 0.82rem; background: #0f172a; border: 1px solid var(--border-card); border-radius: 4px; color: #fff;">
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Bộ lọc MA50 (ma50_window / filter_active):</label>
+                                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                            <input type="number" id="cfg_s_ma50_win" class="form-input" value="30" placeholder="Window" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <label style="font-size: 0.8rem; color: #fff; cursor: pointer;">
+                                                <input type="checkbox" id="cfg_s_ma50_act"> Bật MA50
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Bộ lọc Win Rate (window / min_total / threshold):</label>
+                                        <div style="display: flex; gap: 0.4rem;">
+                                            <input type="number" id="cfg_s_wr_win" class="form-input" value="10" placeholder="Window" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" id="cfg_s_wr_min_tot" class="form-input" value="4" placeholder="Min Total" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                            <input type="number" step="0.01" id="cfg_s_wr_th" class="form-input" value="0.52" placeholder="Threshold" style="padding: 0.35rem; font-size: 0.82rem; background: #0f172a; color: #fff;">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.8rem; color: var(--text-muted);">Hình phạt biến động (volatility_penalty):</label>
+                                        <input type="number" step="0.1" id="cfg_s_vol_penalty" class="form-input" value="1.2" style="padding: 0.35rem 0.5rem; font-size: 0.82rem; background: #0f172a; border: 1px solid var(--border-card); border-radius: 4px; color: #fff;">
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+
                             <div class="form-group">
                                 <label style="font-size: 0.82rem; color: var(--text-muted);">Chốt lời tạm dừng sau khi thắng (win_streak_pause_limit):</label>
                                 <input type="number" id="cfg_s_winpause" class="form-input" value="2" style="padding: 0.4rem 0.6rem; font-size: 0.85rem; background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border-card); border-radius: 4px; color: #fff;">
@@ -845,6 +1040,6 @@
     </div>
 
     <!-- Script assets inclusion -->
-    <script src="/app.js?v=202607202115"></script>
+    <script src="/app.js?v=202607211115"></script>
 </body>
 </html>

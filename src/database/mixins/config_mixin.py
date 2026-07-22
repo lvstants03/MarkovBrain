@@ -103,3 +103,32 @@ class ConfigMixin:
         """Xoa cache khi nguoi dung cap nhat tham so qua UI."""
         _config_cache.clear()
         logger.info("[ConfigMixin] Analyzer config cache invalidated")
+
+    def calculate_optimal_retention_limit(self) -> int:
+        """
+        Thuat toan tu dong tinh toan so ky luu giu toi uu de Win Rate dat muc cao nhat:
+        MaxWindow = max(n_sliding_max, ar_window_max, win_rate_filter_window * 2, ma50_window, n_recent_max, 100)
+        OptimalLimit = max(int(MaxWindow * 3.0), 300)
+        """
+        try:
+            parity_cfg = self.get_analyzer_config("parity")
+            size_cfg = self.get_analyzer_config("size")
+
+            p_sliding = parity_cfg.get("n_sliding_max", 20)
+            s_sliding = size_cfg.get("n_sliding_max", 20)
+            p_ar = parity_cfg.get("ar_window_max", 30)
+            s_ar = size_cfg.get("ar_window_max", 30)
+            p_wr = parity_cfg.get("win_rate_filter_window", 10) * 2
+            s_wr = size_cfg.get("win_rate_filter_window", 10) * 2
+            p_ma = parity_cfg.get("ma50_window", 30)
+            s_ma = size_cfg.get("ma50_window", 30)
+            p_rec = parity_cfg.get("n_recent_max", 14)
+            s_rec = size_cfg.get("n_recent_max", 14)
+
+            max_win = max(p_sliding, s_sliding, p_ar, s_ar, p_wr, s_wr, p_ma, s_ma, p_rec, s_rec, 100)
+            optimal_limit = max(int(max_win * 3.0), 300)
+            return optimal_limit
+        except Exception as ex:
+            logger.warning(f"[ConfigMixin] Dynamic retention limit calculation failed: {ex}, fallback 500")
+            return 500
+

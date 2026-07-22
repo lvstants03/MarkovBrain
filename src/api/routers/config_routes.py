@@ -218,7 +218,23 @@ async def save_preset_config(payload: SavePresetRequest):
         from src.database.connection import get_db_session
         from src.database.models import AnalyzerConfig
         preset = payload.preset_name if hasattr(payload, "preset_name") and payload.preset_name else "default"
+
+        # Validate backend
+        for market, cfg_dict in [("parity", payload.parity_config), ("size", payload.size_config)]:
+            if not isinstance(cfg_dict, dict): continue
+            p_min = cfg_dict.get("buy_threshold_min")
+            p_max = cfg_dict.get("buy_threshold_max")
+            if p_min is not None and (p_min < 0.40 or p_min > 0.99):
+                raise HTTPException(status_code=400, detail=f"buy_threshold_min ({market}) phai tu 0.40 den 0.99!")
+            if p_min is not None and p_max is not None and p_min > p_max:
+                raise HTTPException(status_code=400, detail=f"buy_threshold_min ({market}) khong duoc lon hon buy_threshold_max!")
+            rev = cfg_dict.get("reversal_threshold")
+            if rev is not None and (rev < 0.50 or rev > 0.99):
+                raise HTTPException(status_code=400, detail=f"reversal_threshold ({market}) phai tu 0.50 den 0.99!")
+
+        saved_ids = {}
         with get_db_session() as session:
+
             for market, cfg_dict in [("parity", payload.parity_config), ("size", payload.size_config)]:
                 cfg = session.query(AnalyzerConfig).filter_by(
                     lottery_code=config.LOTTERY_CODE,
@@ -233,12 +249,16 @@ async def save_preset_config(payload: SavePresetRequest):
                         preset_name=preset
                     )
                     session.add(cfg)
+                    session.flush()
 
                 for field in _ALL_FIELDS:
                     if field in cfg_dict:
                         setattr(cfg, field, cfg_dict[field])
 
                 cfg.is_active = True
+                session.flush()
+                saved_ids[f"{market}_id"] = cfg.id
+
             session.commit()
         # Xoa cache de engine doc lai tham so moi ngay lap tuc
         store.invalidate_analyzer_config_cache()
@@ -248,9 +268,12 @@ async def save_preset_config(payload: SavePresetRequest):
     return {
         "status": "success",
         "message": f"Da cap nhat vinh vien bo tham so preset='{preset}' vao Database!",
+        "preset_name": preset,
+        "ids": saved_ids,
         "parity_config": payload.parity_config,
         "size_config": payload.size_config
     }
+
 
 
 @router.get("/config/presets")
@@ -286,7 +309,48 @@ async def list_config_presets():
     }
 
 
+@router.get("/config/presets/{preset_name}")
+async def get_config_preset_detail(preset_name: str):
+    """Lay chi tiet tham so cua 1 preset theo ten tu Database"""
+    try:
+        from src.database.connection import get_db_session
+        from src.database.models import AnalyzerConfig
+        parity_cfg = {}
+        size_cfg = {}
+        with get_db_session() as session:
+            rows = session.query(AnalyzerConfig).filter_by(
+                lottery_code=config.LOTTERY_CODE,
+                preset_name=preset_name
+            ).all()
+
+            for r in rows:
+                c_dict = {
+                    col.name: getattr(r, col.name)
+                    for col in r.__table__.columns
+                    if col.name not in ["id", "lottery_code", "market_type", "preset_name", "updated_at"]
+                }
+                if r.market_type == "parity":
+                    parity_cfg = c_dict
+                elif r.market_type == "size":
+                    size_cfg = c_dict
+
+        if not parity_cfg and not size_cfg:
+            # Fallback default dict
+            parity_cfg = store.get_analyzer_config("parity")
+            size_cfg = store.get_analyzer_config("size")
+
+        return {
+            "status": "success",
+            "preset_name": preset_name,
+            "parity_config": parity_cfg,
+            "size_config": size_cfg
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Loi lay chi tiet preset: {e}")
+
+
 @router.post("/config/presets/{preset_name}/activate")
+
 async def activate_config_preset(preset_name: str):
     """Kich hoat mot preset lam cau hinh chinh cho Bot"""
     try:

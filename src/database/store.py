@@ -247,6 +247,7 @@ class DataStore(RecordsMixin, PredictionsMixin, BetsMixin, ConfigMixin):
                 key = f"lottery:{config.LOTTERY_CODE}:socket_logs"
                 self.redis_client.lpush(key, json.dumps(log_entry))
                 self.redis_client.ltrim(key, 0, 499)
+                self._persist_connection_log_to_db(event, message)
                 return True
             except Exception as e:
                 logger.error(f"Redis error in log_connection_event: {e}")
@@ -256,7 +257,25 @@ class DataStore(RecordsMixin, PredictionsMixin, BetsMixin, ConfigMixin):
             self._socket_logs.insert(0, log_entry)
             if len(self._socket_logs) > 500:
                 self._socket_logs = self._socket_logs[:500]
+        self._persist_connection_log_to_db(event, message)
         return True
+
+    def _persist_connection_log_to_db(self, event: str, message: str) -> None:
+        """Ghi su kien ket noi WebSocket vao bang system_connection_logs trong CSDL."""
+        try:
+            from src.database.connection import get_db_session
+            from src.database.models.system import SystemConnectionLog
+            with get_db_session() as session:
+                db_log = SystemConnectionLog(
+                    lottery_code=config.LOTTERY_CODE,
+                    event_type=event,
+                    message=message,
+                )
+                session.add(db_log)
+                logger.info(f"[DB] Saved connection_log: [{event}] {message[:60]}")
+        except Exception as ex:
+            logger.warning(f"[DB] connection_log persist warning: {ex}")
+
 
     def get_connection_logs(self, limit: int = 100) -> List[Dict[str, Any]]:
         if self.use_redis:

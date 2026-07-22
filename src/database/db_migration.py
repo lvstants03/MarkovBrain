@@ -50,6 +50,20 @@ def _run_alter_migrations(engine):
         except Exception as ex:
             logger.debug(f"Migration skip {col_name}: {ex}")
 
+    # Migration unique constraint: Drop uk_analyzer_config_lottery_market cu, add uk_analyzer_config_preset (3 cot)
+    try:
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            conn.execute(text(
+                "ALTER TABLE analyzer_configs DROP CONSTRAINT IF EXISTS uk_analyzer_config_lottery_market"
+            ))
+            # Dam bao index/constraint uk_analyzer_config_preset ton tai voi 3 cot
+            conn.execute(text(
+                "ALTER TABLE analyzer_configs ADD CONSTRAINT uk_analyzer_config_preset UNIQUE (lottery_code, market_type, preset_name)"
+            ))
+        logger.info("Migration: updated unique constraint on analyzer_configs to include preset_name")
+    except Exception as ex:
+        logger.debug(f"Migration constraint update skip or already present: {ex}")
+
 
 def seed_default_data():
     """Nap bo tham so chuan mac dinh vao analyzer_configs va system_parameters"""
