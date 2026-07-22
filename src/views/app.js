@@ -1563,14 +1563,55 @@ function populateFormInputsFromConfig(parityCfg, sizeCfg) {
     bind('cfg_s_wr_th', sizeCfg.win_rate_filter_threshold, 0.52);
     bind('cfg_s_vol_penalty', sizeCfg.volatility_penalty, 1.2);
 
-    // JSON Textarea Bindings
-    if (document.getElementById('jsonParityText')) {
-        document.getElementById('jsonParityText').value = JSON.stringify(parityCfg, null, 2);
-    }
     if (document.getElementById('jsonSizeText')) {
         document.getElementById('jsonSizeText').value = JSON.stringify(sizeCfg, null, 2);
     }
+    updateAutoRetentionBadge();
 }
+
+function updateAutoRetentionBadge() {
+    const getValue = (id, defaultVal) => {
+        const el = document.getElementById(id);
+        if (!el) return defaultVal;
+        const val = parseInt(el.value);
+        return isNaN(val) ? defaultVal : val;
+    };
+
+    const p_n_max = getValue('cfg_p_n_max', 20);
+    const s_n_max = getValue('cfg_s_n_max', 20);
+    const p_ar_max = getValue('cfg_p_ar_max', 30);
+    const s_ar_max = getValue('cfg_s_ar_max', 30);
+    const p_wr_win = getValue('cfg_p_wr_win', 10) * 2;
+    const s_wr_win = getValue('cfg_s_wr_win', 10) * 2;
+    const p_ma = getValue('cfg_p_ma50_win', 30);
+    const s_ma = getValue('cfg_s_ma50_win', 30);
+    const p_rec = getValue('cfg_p_rec_max', 14);
+    const s_rec = getValue('cfg_s_rec_max', 14);
+
+    const maxWin = Math.max(p_n_max, s_n_max, p_ar_max, s_ar_max, p_wr_win, s_wr_win, p_ma, s_ma, p_rec, s_rec, 100);
+    const optimalLimit = Math.max(Math.floor(maxWin * 3.0), 300);
+
+    const badge = document.getElementById('autoRetentionBadge');
+    if (badge) {
+        badge.innerText = `⚡ Số Kỳ Tối Ưu WR: ${optimalLimit} Kỳ (Tự Động)`;
+    }
+}
+
+async function onPresetSelectionChanged() {
+    const selectEl = document.getElementById('dbPresetSelect');
+    if (!selectEl) return;
+    const name = selectEl.value;
+    try {
+        const res = await fetch(`/api/config/presets/${name}`);
+        if (res.ok) {
+            const data = await res.json();
+            populateFormInputsFromConfig(data.parity_config, data.size_config);
+        }
+    } catch (e) {
+        console.warn('Could not load preset details:', e);
+    }
+}
+
 
 function validateSingleConfig(cfg, label) {
     if (!cfg) return null;
@@ -1872,4 +1913,20 @@ async function fetchAndRenderMarketHealthAnalytics() {
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(loadAllPresetsFromDb, 1000);
     setTimeout(fetchAndRenderMarketHealthAnalytics, 1500);
+
+    // Attach real-time input listeners to recalculate retention limit
+    const retentionInputIds = [
+        'cfg_p_n_max', 'cfg_s_n_max',
+        'cfg_p_ar_max', 'cfg_s_ar_max',
+        'cfg_p_wr_win', 'cfg_s_wr_win',
+        'cfg_p_ma50_win', 'cfg_s_ma50_win',
+        'cfg_p_rec_max', 'cfg_s_rec_max'
+    ];
+    retentionInputIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', updateAutoRetentionBadge);
+        }
+    });
 });
+
